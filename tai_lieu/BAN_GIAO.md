@@ -7,7 +7,8 @@ Cập nhật: 19/11/2026 (phiên 2 — thêm tính tiền + kho thay KiotViet).
 - **Bản chạy thử trên máy đã có đủ: quản lý box + gọi món / thanh toán + hoá đơn (in lại, huỷ, huỷ & thu lại) + kho + báo cáo tiền.** Dữ liệu nằm trong trình duyệt, chưa có máy chủ thật, chưa đưa lên mạng.
 - Nhánh: `dat-box` (quản lý box) → `tinh-tien` (tính tiền + kho, làm tiếp từ `dat-box`). Kho Git riêng ở `~/Lela Box`, chưa có bản trên GitHub. Chưa gộp vào `main` — chờ anh Tiến duyệt.
 - Anh Tiến chốt (19/11): **web riêng**, không gộp vào web Milano; **thay hẳn KiotViet** ở Lela Box (LLB vẫn chốt ca bên Milano như cũ).
-- Tệp máy chủ `supabase/01_khoi_tao.sql` + `02_tinh_tien_kho.sql` đã viết, **chưa chạy lần nào** (máy không có Postgres). Đã soát cú pháp bằng bộ đọc Postgres (pglast) và soát tên hàm / tham số khớp với web. Lần đầu phải chạy thử kèm `kiem_tra_01.sql`, `kiem_tra_02.sql` (tự hoàn tác) trước khi chạy thật.
+- **Máy chủ thật đã có (20/11/2026):** Supabase dự án `twavnihbqzggvqrftfzj` (tên LELA BOX, Singapore). Đã chạy thử `kiem_tra_01` (13/13 mục đúng) + `kiem_tra_02` (30/30 mục đúng) rồi chạy thật `01_khoi_tao.sql` + `02_tinh_tien_kho.sql`. Kiểm: 16 bảng đều bật RLS, 49 hàm `app_*`, khoá anon không đọc được bảng / không gọi được hàm. `docs/js/config.js` đã có địa chỉ + khoá anon; web trên `*.github.io` tự dùng máy chủ thật, mở trên máy vẫn là bản chạy thử (ép bằng `?store=`). Tệp SQL mới từ nay là `03_...sql` (01/02 đã chạy, không sửa).
+- Kho GitHub: https://github.com/tiendo286-lab/LELA-BOX (công khai), nhánh `main` = bản đầy đủ.
 
 ## Đã kiểm
 
