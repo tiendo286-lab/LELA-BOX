@@ -17,3 +17,7 @@ flow_ban_hang ql
 flow_cai_dat_ban chu
 flow_cai_dat_ban chu phone
 flow_cai_dat_ban ql
+flow_kho nv
+flow_kho ql
+flow_kho nv phone
+flow_khach_bc ql

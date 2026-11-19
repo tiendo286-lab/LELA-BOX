@@ -12,7 +12,8 @@ const PAGES = {
   '#/bang': { title: 'Bảng box', load: () => import('./pages/bang.js') },
   '#/lich': { title: 'Lịch', load: () => import('./pages/lich.js') },
   '#/khach': { title: 'Khách', load: () => import('./pages/khach.js') },
-  '#/bao-cao': { title: 'Báo cáo', load: () => import('./pages/bao_cao.js'), roles: ['chu'] },
+  '#/kho': { title: 'Kho', load: () => import('./pages/kho.js') },
+  '#/bao-cao': { title: 'Báo cáo', load: () => import('./pages/bao_cao.js'), roles: ['chu', 'ql'] },
   '#/cai-dat': { title: 'Cài đặt', load: () => import('./pages/cai_dat.js'), roles: ['chu', 'ql'] },
 };
 const TEST_USER = { chu: 'u_chu', ql: 'u_ql', nv: 'u_a' };

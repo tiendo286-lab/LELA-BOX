@@ -1,7 +1,10 @@
-// Báo cáo (Chủ): lượt khách / ngày, giờ cao điểm, giờ ngồi thêm.
+// Báo cáo (Chủ / Quản lý): doanh thu, bán theo món, giảm–huỷ, lượt khách / ngày, giờ cao điểm, giờ ngồi thêm.
 import { html, str, $, on } from '../ui.js';
 import { fmtMin, fmtDay, fromMs, addDays, fmtDur } from '../time.js';
-import { dailyCounts, peakGrid, extraList } from '../report.js';
+import { dailyCounts, peakGrid, extraList, revenueDaily, itemSales, extraMoney, discountSummary } from '../report.js';
+import { fmtMoney } from '../money.js';
+
+const KIND = { huy_mon: 'Huỷ món đã gửi', giam_tay: 'Giảm tay', thu_0d: 'Thu phiếu 0đ', huy_hoa_don: 'Huỷ hoá đơn' };
 
 const vn = (x) => String(x).replace('.', ',');
 
@@ -23,14 +26,35 @@ export default async function render(root, ctx) {
 
   async function draw() {
     $('#r-from', root).value = from; $('#r-to', root).value = to;
-    const vs = await store.visitsRange(from, to);
+    const [vs, orders, approvals] = await Promise.all([store.visitsRange(from, to), store.ordersRange(from, to), store.approvalsRange(from, to)]);
+    const rev = revenueDaily(orders, from, to);
+    const revSum = rev.reduce((a, d) => ({ n: a.n + d.count, cash: a.cash + d.cash, tr: a.tr + d.transfer, voids: a.voids + d.voids, total: a.total + d.total }), { n: 0, cash: 0, tr: 0, voids: 0, total: 0 });
+    const items = itemSales(orders, from, to);
+    const em = extraMoney(orders, from, to);
+    const disc = discountSummary(orders.filter((o) => o.status === 'da_thu'));
     const daily = dailyCounts(vs, from, to);
     const peak = peakGrid(vs, from, to, s);
     const ex = extraList(vs, from, to, s);
     const sum = daily.reduce((a, d) => ({ dat: a.dat + d.datTruoc, vl: a.vl + d.vangLai, kd: a.kd + d.khongDen }), { dat: 0, vl: 0, kd: 0 });
     const shade = (v) => `background:rgba(122,74,43,${Math.min(1, v / nBoxes).toFixed(2)});color:${v / nBoxes > 0.55 ? '#fff' : 'inherit'}`;
     const byOut = (v) => ((v.log || []).filter((l) => l.action === 'Khách về').pop() || {}).by || '';
+    const when = (ms) => `${fmtDay(fromMs(ms).date)} ${fmtMin(fromMs(ms).min)}`;
     $('#rep', root).innerHTML = str(html`
+      <section class="card"><h2>Doanh thu</h2>
+        <p class="big">Tổng: ${fmtMoney(revSum.total)}</p>
+        <p class="small muted">${revSum.n} hoá đơn · tiền mặt ${fmtMoney(revSum.cash)} · chuyển khoản ${fmtMoney(revSum.tr)}${revSum.voids ? ` · huỷ ${fmtMoney(revSum.voids)}` : ''}</p>
+        <div class="scroll-x"><table class="tbl t-revenue"><thead><tr><th>Ngày</th><th>Hoá đơn</th><th>Tiền mặt</th><th>Chuyển khoản</th><th>Huỷ</th><th>Tổng</th></tr></thead>
+        <tbody>${rev.slice().reverse().map((d) => html`<tr><td>${fmtDay(d.date)}</td><td>${d.count}</td><td>${fmtMoney(d.cash)}</td><td>${fmtMoney(d.transfer)}</td><td class="${d.voids ? 'neg' : ''}">${d.voids ? fmtMoney(d.voids) : ''}</td><td><b>${fmtMoney(d.total)}</b></td></tr>`)}</tbody></table></div>
+        <p class="small">Tiền ngồi thêm: <b>${fmtMoney(em.amount)}</b> (${em.hours} giờ) · Giảm giá: khuyến mãi ${fmtMoney(disc.promo)}, voucher ${fmtMoney(disc.voucher)}, giảm tay ${fmtMoney(disc.manual)}</p>
+      </section>
+      <section class="card"><h2>Bán theo món</h2>
+        ${items.length ? html`<div class="scroll-x"><table class="tbl t-items"><thead><tr><th>Món</th><th>SL</th><th>Tiền</th></tr></thead>
+        <tbody>${items.map((x) => html`<tr><td>${x.name}</td><td>${x.qty}</td><td>${fmtMoney(x.amount)}</td></tr>`)}</tbody></table></div>` : html`<p class="muted">Chưa bán món nào.</p>`}
+      </section>
+      <section class="card"><h2>Giảm giá / huỷ cần quản lý duyệt</h2>
+        ${approvals.length ? html`<div class="scroll-x"><table class="tbl t-voids"><thead><tr><th>Lúc</th><th>Việc</th><th>Số tiền</th><th>Lý do</th><th>Người làm</th><th>Người duyệt</th></tr></thead>
+        <tbody>${approvals.slice().reverse().map((a) => html`<tr><td>${when(a.at)}</td><td>${KIND[a.kind] || a.kind}${a.item ? ` · ${a.item}` : ''}</td><td>${a.amount != null ? fmtMoney(a.amount) : a.pct ? `${a.pct}%` : ''}</td><td>${a.reason}</td><td>${a.askedBy}</td><td>${a.approvedBy}</td></tr>`)}</tbody></table></div>` : html`<p class="muted">Không có.</p>`}
+      </section>
       <section class="card"><h2>Lượt khách mỗi ngày</h2>
         <p class="small muted">Tổng: ${sum.dat} đặt trước · ${sum.vl} vãng lai · ${sum.kd} không đến</p>
         <div class="scroll-x"><table class="tbl t-daily"><thead><tr><th>Ngày</th><th>Đặt trước</th><th>Vãng lai</th><th>Không đến</th><th>Huỷ</th><th>Giờ ngồi</th></tr></thead>
