@@ -107,7 +107,7 @@ begin
   r := r || format('in lại giữ giá thêm cũ: %s (mong 25000); ', app_order_receipt(o2) -> 'priced' ->> 'extraPrice');
   x := app_order_void(o2, '{"reason":"thu nhầm","reopen":true}');
   r := r || format('huỷ & thu lại: phiếu mở mới %s, số món %s (mong 1, 1 dòng SL 2); ',
-    (select count(*) from orders where visit_id = v2 ->> 'id' and status = 'mo'), (select jsonb_array_length(lines) from orders where visit_id = v2 ->> 'id' and status = 'mo'));
+    (select count(*) from orders where visit_id = v2 ->> 'id' and status = 'mo'), (select jsonb_array_length(od.lines) from orders od where od.visit_id = v2 ->> 'id' and od.status = 'mo'));
   x := app_bills_of_day((now() at time zone 'Asia/Ho_Chi_Minh')::date);
   r := r || format('danh sách hoá đơn: %s (mong 2 — cả 2 đã huỷ); ', (select string_agg(b ->> 'status', ',') from jsonb_array_elements(x) b));
 
