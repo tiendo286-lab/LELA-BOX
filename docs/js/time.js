@@ -56,3 +56,15 @@ export function fmtDay(isoDate) {
   const dt = parse(isoDate);
   return `${THU[dt.getUTCDay()]}, ${pad(dt.getUTCDate())}/${pad(dt.getUTCMonth() + 1)}`;
 }
+
+// Mốc thời gian thật (epoch ms) ↔ ngày + phút theo giờ Việt Nam
+const VN = 7 * 3600 * 1000;
+export function atMs(isoDate, min) { return parse(isoDate).getTime() + min * 60000 - VN; }
+export function fromMs(ms) {
+  const vn = new Date(ms + VN);
+  return { date: iso(vn), min: vn.getUTCHours() * 60 + vn.getUTCMinutes() };
+}
+export function fmtDur(min) {
+  const m = Math.max(0, Math.floor(min));
+  return `${Math.floor(m / 60)}g${pad(m % 60)}`;
+}

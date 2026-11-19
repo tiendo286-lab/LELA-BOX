@@ -1,5 +1,5 @@
 import { t, eq, done } from './t.mjs';
-import { toMin, fmtMin, dayWindow, slots, addDays, todayIso, fmtDay } from '../docs/js/time.js';
+import { toMin, fmtMin, dayWindow, slots, addDays, todayIso, fmtDay, atMs, fromMs, fmtDur } from '../docs/js/time.js';
 await t('toMin', () => eq(toMin('08:30'), 510));
 await t('fmtMin qua 24h', () => eq(fmtMin(1470), '00:30'));
 await t('dayWindow qua nửa đêm', () => eq(dayWindow({ open: '08:00', close: '01:00' }), { openMin: 480, closeMin: 1500 }));
@@ -10,4 +10,8 @@ await t('fmtDay CN', () => eq(fmtDay('2026-11-22'), 'CN, 22/11'));
 await t('addDays sang tháng', () => eq(addDays('2026-11-30', 1), '2026-12-01'));
 await t('todayIso ca qua đêm', () => eq(todayIso(new Date('2026-11-19T17:30:00Z'), { open: '08:00', close: '01:00' }), '2026-11-19'));
 await t('todayIso ca trong ngày', () => eq(todayIso(new Date('2026-11-19T17:30:00Z'), { open: '08:00', close: '23:00' }), '2026-11-20'));
+await t('atMs giờ VN', () => eq(atMs('2026-11-19', 870), Date.UTC(2026, 10, 19, 7, 30)));
+await t('fromMs qua nửa đêm VN', () => eq(fromMs(Date.UTC(2026, 10, 19, 17, 30)), { date: '2026-11-20', min: 30 }));
+await t('fmtDur', () => eq(fmtDur(130), '2g10'));
+await t('fmtDur dưới 1 giờ', () => eq(fmtDur(45), '0g45'));
 done();
