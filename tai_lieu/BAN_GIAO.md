@@ -9,6 +9,7 @@ Cập nhật: 19/11/2026 (phiên 2 — thêm tính tiền + kho thay KiotViet).
 - Anh Tiến chốt (19/11): **web riêng**, không gộp vào web Milano; **thay hẳn KiotViet** ở Lela Box (LLB vẫn chốt ca bên Milano như cũ).
 - **Máy chủ thật đã có (20/11/2026):** Supabase dự án `twavnihbqzggvqrftfzj` (tên LELA BOX, Singapore). Đã chạy thử `kiem_tra_01` (13/13 mục đúng) + `kiem_tra_02` (30/30 mục đúng) rồi chạy thật `01_khoi_tao.sql` + `02_tinh_tien_kho.sql`. Kiểm: 16 bảng đều bật RLS, 49 hàm `app_*`, khoá anon không đọc được bảng / không gọi được hàm. `docs/js/config.js` đã có địa chỉ + khoá anon; web trên `*.github.io` tự dùng máy chủ thật, mở trên máy vẫn là bản chạy thử (ép bằng `?store=`). Tệp SQL mới từ nay là `03_...sql` (01/02 đã chạy, không sửa).
 - Kho GitHub: https://github.com/tiendo286-lab/LELA-BOX (công khai), nhánh `main` = bản đầy đủ.
+- Tài khoản Chủ đầu tiên đã tạo (20/11, email của anh Tiến, vai trò `chu`) — đã thử đăng nhập + gọi hàm thành công. Nhân viên / Quản lý khác: tạo ở Supabase › Authentication › Users rồi Chủ thêm email trong web (Cài đặt › Nhân viên). Còn chờ: anh Tiến bật GitHub Pages (Settings › Pages › main /docs).
 
 ## Đã kiểm
 
