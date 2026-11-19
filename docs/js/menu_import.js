@@ -23,3 +23,38 @@ export function parseMenuRows(rows) {
   }
   return { items: [], error: 'Không thấy cột Tên hàng / Giá bán trong file' };
 }
+
+// CSV (dấu phẩy hoặc chấm phẩy, có ngoặc kép) → mảng dòng
+export function parseCsv(text) {
+  const src = String(text || '').replace(/^﻿/, '');
+  const first = src.split(/\r?\n/)[0] || '';
+  const sep = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (q) { if (c === '"' && src[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === sep) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && src[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((x) => String(x).trim() !== ''));
+}
+
+// Ô chọn combo viết bằng chữ, mỗi dòng: "Tên ô; số món; nhóm1, nhóm2"
+export function parseSlots(text) {
+  const slots = [];
+  const lines = String(text || '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i].trim();
+    if (!ln) continue;
+    const [label, count, groups] = ln.split(';').map((x) => (x || '').trim());
+    const n = Number(count);
+    const gs = (groups || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (!label || !Number.isInteger(n) || n < 1 || !gs.length) return { slots: [], error: `Dòng ${i + 1}: cần dạng "Tên ô; số món; nhóm1, nhóm2"` };
+    slots.push({ label, count: n, groups: gs });
+  }
+  return { slots, error: null };
+}
+export const fmtSlots = (slots) => (slots || []).map((s) => `${s.label}; ${s.count}; ${s.groups.join(', ')}`).join('\n');

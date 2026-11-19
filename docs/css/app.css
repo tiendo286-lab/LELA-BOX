@@ -175,3 +175,16 @@ details.log ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .pl.ok { color: var(--sit-ink); }
 .act-label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 14px; }
 .wide-btn { width: 100%; margin-top: 8px; min-height: 48px; font-size: 17px; }
+
+/* Cài đặt bán hàng */
+.menu-row, .promo-row, .voucher-row { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.menu-row input[name=name] { flex: 2 1 160px; width: auto; }
+.menu-row input[name=group] { flex: 1 1 100px; width: auto; }
+.menu-row input[name=price] { flex: 0 1 100px; width: auto; }
+.menu-row select { flex: 0 1 90px; width: auto; }
+.menu-row button, .promo-row button, .voucher-row button { min-height: 36px; padding: 4px 10px; }
+.menu-row .combo-extra { flex: 1 1 100%; display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr); gap: 8px; }
+.promo-row > span, .voucher-row > span { flex: 1 1 200px; min-width: 0; font-size: 14px; }
+.days-pick { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+.add-form { margin-top: 10px; }
+h3 { font-size: 15px; margin: 14px 0 6px; }

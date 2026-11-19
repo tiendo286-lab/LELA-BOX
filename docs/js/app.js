@@ -12,8 +12,8 @@ const PAGES = {
   '#/bang': { title: 'Bảng box', load: () => import('./pages/bang.js') },
   '#/lich': { title: 'Lịch', load: () => import('./pages/lich.js') },
   '#/khach': { title: 'Khách', load: () => import('./pages/khach.js') },
-  '#/bao-cao': { title: 'Báo cáo', load: () => import('./pages/bao_cao.js'), chu: true },
-  '#/cai-dat': { title: 'Cài đặt', load: () => import('./pages/cai_dat.js'), chu: true },
+  '#/bao-cao': { title: 'Báo cáo', load: () => import('./pages/bao_cao.js'), roles: ['chu'] },
+  '#/cai-dat': { title: 'Cài đặt', load: () => import('./pages/cai_dat.js'), roles: ['chu', 'ql'] },
 };
 const TEST_USER = { chu: 'u_chu', ql: 'u_ql', nv: 'u_a' };
 
@@ -70,13 +70,14 @@ async function render() {
   closeSheets();
   if (!me) return showLogin();
   let { path, params } = parseHash();
-  if (PAGES[path].chu && me.role !== 'chu') { location.replace('#/bang'); path = '#/bang'; }
+  const allowed = (p) => !p.roles || p.roles.includes(me.role);
+  if (!allowed(PAGES[path])) { location.replace('#/bang'); path = '#/bang'; }
   const settings = await store.getSettings();
   root.innerHTML = str(html`
     <header class="topbar"><span class="brand">Lela Box</span><span class="clock" id="clock">${clockText()}</span>
       <span class="who">${me.name}</span><button type="button" id="logout">Đăng xuất</button></header>
     ${store.volatile ? html`<div class="volatile">Dữ liệu chạy thử sẽ mất khi tải lại trang (trình duyệt chặn lưu).</div>` : ''}
-    <nav class="tabs">${Object.entries(PAGES).filter(([, p]) => !p.chu || me.role === 'chu')
+    <nav class="tabs">${Object.entries(PAGES).filter(([, p]) => allowed(p))
       .map(([h, p]) => html`<a href="${h}" class="${h === path ? 'on' : ''}">${p.title}</a>`)}</nav>
     <div id="nhac-app" class="nhac-wrap"></div>
     <main id="page"><p class="loading">Đang tải…</p></main>`);

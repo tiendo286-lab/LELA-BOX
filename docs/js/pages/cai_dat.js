@@ -1,11 +1,18 @@
 // Cài đặt (chỉ Chủ): giờ mở cửa + quy định, danh sách box, nhân viên
 import { html, str, $, on, toast, showError } from '../ui.js';
+import { mountSales, pinSection, bindPin } from './cai_dat_ban.js';
 
 const HOURS = [60, 90, 120, 150, 180, 210, 240, 300, 360];
 const hLabel = (m) => (m % 60 ? `${Math.floor(m / 60)} giờ ${m % 60}` : `${m / 60} giờ`);
 
 export default async function render(root, ctx) {
   const { store } = ctx;
+  // Quản lý: chỉ đổi PIN của mình
+  if (ctx.me.role !== 'chu') {
+    root.innerHTML = str(html`<h1>Cài đặt</h1>${pinSection()}`);
+    bindPin(root, ctx);
+    return;
+  }
   const s = await store.getSettings();
   const boxes = await store.listBoxes({ all: true });
   const staff = await store.listStaff();
@@ -51,12 +58,14 @@ export default async function render(root, ctx) {
         <div class="staff-row" data-id="${u.id}">
           <input name="name" value="${u.name}" aria-label="Tên">
           <input name="email" type="email" value="${u.email}" aria-label="Email" placeholder="Email đăng nhập">
-          <select name="role" aria-label="Vai trò"><option value="nv" ${u.role === 'nv' ? 'selected' : ''}>Nhân viên</option><option value="chu" ${u.role === 'chu' ? 'selected' : ''}>Chủ</option></select>
+          <select name="role" aria-label="Vai trò"><option value="nv" ${u.role === 'nv' ? 'selected' : ''}>Nhân viên</option><option value="ql" ${u.role === 'ql' ? 'selected' : ''}>Quản lý</option><option value="chu" ${u.role === 'chu' ? 'selected' : ''}>Chủ</option></select>
           <button type="button" data-act="save-staff">Lưu</button>
         </div>`)}</div>
       <button type="button" data-act="add-staff">+ Thêm nhân viên</button>
       <p class="muted small">Khi có máy chủ thật: tài khoản đăng nhập tạo trong trang quản trị Supabase (Authentication › Users), rồi ghi đúng email ở đây để gán vai trò.</p>
-    </section>`);
+    </section>
+    <div id="sales"></div>`);
+  await mountSales($('#sales', root), ctx);
 
   $('#f-set', root).addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -94,7 +103,7 @@ export default async function render(root, ctx) {
     const div = document.createElement('div');
     div.className = 'staff-row'; div.dataset.id = '';
     div.innerHTML = str(html`<input name="name" placeholder="Tên" aria-label="Tên"><input name="email" type="email" placeholder="Email đăng nhập" aria-label="Email">
-      <select name="role" aria-label="Vai trò"><option value="nv">Nhân viên</option><option value="chu">Chủ</option></select>
+      <select name="role" aria-label="Vai trò"><option value="nv">Nhân viên</option><option value="ql">Quản lý</option><option value="chu">Chủ</option></select>
       <button type="button" data-act="save-staff">Lưu</button>`);
     $('#staff', root).appendChild(div);
   });

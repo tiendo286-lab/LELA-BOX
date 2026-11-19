@@ -14,3 +14,6 @@ flow_sua_gio nv phone
 flow_ban_hang nv
 flow_ban_hang nv phone
 flow_ban_hang ql
+flow_cai_dat_ban chu
+flow_cai_dat_ban chu phone
+flow_cai_dat_ban ql

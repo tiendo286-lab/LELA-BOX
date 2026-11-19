@@ -1,6 +1,6 @@
 import { t, eq, done } from './t.mjs';
 import { expectedQty, deductions } from '../docs/js/stock.js';
-import { parseMenuRows } from '../docs/js/menu_import.js';
+import { parseMenuRows, parseCsv, parseSlots, fmtSlots } from '../docs/js/menu_import.js';
 
 const M = (kind, qty, at, id = 'k_coca') => ({ stockItemId: id, kind, qty, at });
 const moves = [M('nhap', 24, 1), M('ban', 3, 2), M('ban', 2, 4), M('hoan', 1, 5), M('nhap', 50, 1, 'k_khac')];
@@ -29,4 +29,10 @@ await t('đọc Excel KiotViet', () => eq(parseMenuRows([
 ]), { items: [{ name: 'Trà đào', group: 'Trà', price: 35000 }, { name: 'Coca', group: 'Nước', price: 20000 }], error: null }));
 await t('đọc Excel: thiếu cột giá', () => eq(parseMenuRows([['Tên hàng', 'Nhóm hàng'], ['Trà', 'Trà']]).error, 'Không thấy cột Tên hàng / Giá bán trong file'));
 await t('đọc Excel: không có cột nhóm → nhóm "Khác"', () => eq(parseMenuRows([['Tên', 'Giá'], ['Bánh', '15.000']]).items, [{ name: 'Bánh', group: 'Khác', price: 15000 }]));
+await t('đọc CSV có ngoặc kép và dấu phẩy trong giá', () => eq(parseCsv('Tên hàng,Nhóm hàng,Giá bán\r\n"Trà đào, cam",Trà,"35,000"\nCoca,Nước,20000\n'), [['Tên hàng', 'Nhóm hàng', 'Giá bán'], ['Trà đào, cam', 'Trà', '35,000'], ['Coca', 'Nước', '20000']]));
+await t('đọc CSV dấu chấm phẩy (Excel tiếng Việt)', () => eq(parseCsv('Tên;Giá\nBánh;15000'), [['Tên', 'Giá'], ['Bánh', '15000']]));
+await t('ô chọn combo: đọc từ chữ', () => eq(parseSlots('3 đồ uống; 3; Trà, Cà phê\n1 snack;1;Snack\n\n'), { slots: [{ label: '3 đồ uống', count: 3, groups: ['Trà', 'Cà phê'] }, { label: '1 snack', count: 1, groups: ['Snack'] }], error: null }));
+await t('ô chọn combo: dòng sai → báo dòng', () => eq(parseSlots('3 đồ uống; ba; Trà').error, 'Dòng 1: cần dạng "Tên ô; số món; nhóm1, nhóm2"'));
+await t('ô chọn combo: in ra chữ', () => eq(fmtSlots([{ label: '3 đồ uống', count: 3, groups: ['Trà', 'Cà phê'] }]), '3 đồ uống; 3; Trà, Cà phê'));
+
 done();
