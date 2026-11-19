@@ -42,7 +42,7 @@ await t('moveBox sang box đang ngồi → TRUNG, box trống → được', asy
 });
 await t('editTimes tính lại giờ thêm', async () => {
   const s = await fresh(); const v = await s.walkIn({ boxId: 'b1', people: 1 }); clock.set(atMs(D, 600 + 200)); await s.checkOut(v.id);
-  const e = await s.editTimes(v.id, { inAt: atMs(D, 600), outAt: atMs(D, 600 + 250) }); eq([e.minutes, e.extra], [250, 2]);
+  clock.set(atMs(D, 900)); const e = await s.editTimes(v.id, { inAt: atMs(D, 600), outAt: atMs(D, 600 + 250) }); eq([e.minutes, e.extra], [250, 2]);
 });
 await t('updateBooking không trùng chính nó + đổi box', async () => {
   const s = await fresh(); const r = await s.createBooking(B());
@@ -63,5 +63,24 @@ await t('storage hỏng → volatile', async () => { const bad = { getItem() { t
 await t('dữ liệu mẫu có đủ trạng thái', async () => {
   clock.set(atMs(D, 872)); const s = createLocalStore({ storage: mem(), seed: true }); const vs = (await s.snapshot(D)).visits;
   eq([vs.filter((v) => v.status === 'ngoi').length >= 3, vs.some((v) => v.status === 'dat'), (await s.visitsRange('2026-11-13', '2026-11-18')).some((v) => v.status === 've')], [true, true, true]);
+});
+await t('C1 checkOut với giờ ra truyền vào (quên bấm, hôm sau mới bấm)', async () => {
+  const s = await fresh(); const v = await s.walkIn({ boxId: 'b1', people: 1 });
+  clock.set(atMs('2026-11-20', 540)); const r = await s.checkOut(v.id, atMs(D, 600 + 250));
+  eq([r.minutes, r.extra], [250, 2]);
+});
+await t('C1 checkOut giờ ra trước giờ vào → LOI, lượt vẫn đang ngồi', async () => {
+  const s = await fresh(); const v = await s.walkIn({ boxId: 'b1', people: 1 });
+  const c = await code(() => s.checkOut(v.id, atMs(D, 500)));
+  eq([c, (await s.snapshot(D)).visits[0].status], ['LOI', 'ngoi']);
+});
+await t('I1 editTimes sai không để lại dữ liệu hỏng', async () => {
+  const s = await fresh(); const v = await s.walkIn({ boxId: 'b1', people: 1 }); clock.set(atMs(D, 660)); await s.checkOut(v.id);
+  const c = await code(() => s.editTimes(v.id, { outAt: atMs(D, 500) }));
+  const x = (await s.snapshot(D)).visits[0]; eq([c, x.outAt, x.minutes], ['LOI', atMs(D, 660), 60]);
+});
+await t('giờ mở cửa phải tròn :00 / :30', async () => {
+  const s = await fresh('u_chu'); const st = await s.getSettings();
+  eq([await code(() => s.saveSettings({ ...st, open: '08:15' })), await code(() => s.saveSettings({ ...st, open: '08:30' }))], ['LOI', 'OK']);
 });
 done();

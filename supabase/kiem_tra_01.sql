@@ -43,6 +43,12 @@ begin
   o := app_check_out(w ->> 'id');
   r := r || 'về sau 241 phút: thêm ' || (o ->> 'extra') || ' giờ; ';
 
+  perform app_booking_create(jsonb_build_object('name', 'Lân Thử', 'phone', '0911000005', 'date', d, 'startMin', 900, 'durMin', 60, 'boxIds', jsonb_build_array('b9')));
+  r := r || 'tìm "lan" ra "Lân": ' || jsonb_array_length(app_customers_find('lan')) || '; ';
+  w := app_walk_in(jsonb_build_object('boxId', 'b8', 'people', 1));
+  update visits set in_at = now() - interval '20 hours' where id = w ->> 'id';
+  o := app_check_out(w ->> 'id', app__ms(now() - interval '11 hours'));
+  r := r || 'quên bấm về, ghi giờ ra thật (ngồi 9 giờ): thêm ' || (o ->> 'extra') || ' giờ; ';
   r := r || 'snapshot lượt=' || jsonb_array_length(app_snapshot(d) -> 'visits') || '; ';
   r := r || 'tìm khách "0911000003"=' || jsonb_array_length(app_customers_find('0911000003')) || '; ';
 

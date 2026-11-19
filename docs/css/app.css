@@ -141,3 +141,7 @@ details.log ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .tbl th, .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .tbl td { font-variant-numeric: tabular-nums; }
 .t-peak th, .t-peak td { padding: 3px 2px; min-width: 22px; text-align: center; font-size: 11px; border: 1px solid #f3ece4; }
+.nhac-wrap { max-width: 1200px; margin: 0 auto; padding: 12px 12px 0; }
+.nhac-wrap:empty { display: none; }
+.nhac-wrap .nhac { margin-bottom: 0; }
+.kvis button[data-visit] { color: inherit; }

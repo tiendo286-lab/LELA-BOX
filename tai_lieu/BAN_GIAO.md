@@ -11,7 +11,8 @@ Cập nhật: 19/11/2026 (phiên đầu tiên).
 ## Đã kiểm
 
 - Hàm thuần: `kiem_tra/chay_jsc.sh` gồm giờ, đồng hồ, quy tắc, bảng box / nhắc việc, lưu chạy thử, báo cáo, bản máy chủ. Tất cả đạt.
-- Giao diện: `kiem_tra/chay_het.sh` chạy 11 bài trên Chrome ẩn (Nhân viên / Chủ, máy tính / khung điện thoại 390px). Tất cả đạt, không tràn ngang, không có chữ lạ.
+- Giao diện: `kiem_tra/chay_het.sh` chạy 13 bài trên Chrome ẩn (Nhân viên / Chủ, máy tính / khung điện thoại 390px). Tất cả đạt, không tràn ngang, không có chữ lạ.
+- Duyệt cuối (người duyệt mới): đã sửa 1 lỗi nghiêm trọng, 3 lỗi quan trọng, và 2 lỗi em xếp lên mức quan trọng. Danh sách lỗi nhỏ còn để lại ở mục dưới.
 - Tệp `chay_thu.command`: mở được trang (mã 200), có in địa chỉ để mở trên điện thoại.
 
 ## Quyết định anh Tiến đã chốt
@@ -23,6 +24,16 @@ Xem bảng ở mục 5 của bản thiết kế (`docs/superpowers/specs/2026-11
 - Khách đến trễ 15 phút thì nhắc.
 - Ghi cả khách vãng lai.
 - Nhóm đặt 1–3 box trên một phiếu, mỗi box vào / về riêng.
+
+## Lỗi nhỏ còn để lại (người duyệt nêu, chưa sửa)
+
+- Sửa phiếu nhóm đã có box vào rồi: có thể thêm box vượt quá 3 cho cả phiếu.
+- Bản chạy thử cho khách vào box đang tạm ngừng (máy chủ thì chặn).
+- Đăng xuất / đăng nhập nhiều lần trong bản chạy thử: nút chọn người bị gắn sự kiện lặp.
+- Cài đặt › Nhân viên: dòng mới bấm Lưu 2 lần sẽ tạo trùng nhân viên.
+- Sửa phiếu có ngày ngoài 7 ngày tới: ô ngày tự chọn hôm nay.
+- Bấm nhắc việc của box tạm ngừng: chưa chặn.
+- Hàm máy chủ nên đặt `search_path = public, pg_temp` để an toàn hơn.
 
 ## Việc còn mở
 

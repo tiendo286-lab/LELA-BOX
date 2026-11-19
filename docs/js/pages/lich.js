@@ -4,6 +4,7 @@ import { fmtMin, fmtDay, fromMs, addDays, slots, atMs, dayWindow } from '../time
 import { freeBoxes, suggestBoxCount, STATUS_LABEL } from '../rules.js';
 import { fmtPhone } from '../board.js';
 import { openBooking } from './phieu.js';
+import { openTimes } from './gio.js';
 
 export default async function render(root, ctx) {
   const { store, params } = ctx;
@@ -84,7 +85,7 @@ export default async function render(root, ctx) {
     const { openMin, closeMin } = dayWindow(s);
     const rows = slots(s);
     const rowOf = (m) => Math.max(0, Math.min(rows.length, Math.round((m - openMin) / 30)));
-    const block = (x, extra = '') => html`<button type="button" class="vis st-${x.v.status}" ${x.v.bookingId ? html`data-booking="${x.v.bookingId}"` : ''} ${raw(extra)}>
+    const block = (x, extra = '') => html`<button type="button" class="vis st-${x.v.status}" ${x.v.status === 've' ? html`data-visit="${x.v.id}"` : x.v.bookingId ? html`data-booking="${x.v.bookingId}"` : ''} ${raw(extra)}>
       <b>${who(x.v)}</b> <span>${fmtMin(x.sp[0])}–${fmtMin(x.sp[1])}</span>${x.v.status !== 'dat' ? html` · ${STATUS_LABEL[x.v.status]}` : ''}</button>`;
     const grid = html`<div class="grid-view"><div class="sched" style="${`grid-template-columns:52px repeat(${boxes.length}, minmax(64px,1fr))`}">
       <div class="hcell"></div>${boxes.map((b) => html`<div class="hcell">${b.name}</div>`)}
@@ -126,6 +127,10 @@ export default async function render(root, ctx) {
   $('#btn-moi', root).addEventListener('click', async () => after(await openBooking(ctx, { date, startMin, durMin })));
   on(root, 'click', '[data-booking]', async (e, b) => after(await openBooking(ctx, { bookingId: b.dataset.booking })));
   $('#q-phieu', root).addEventListener('input', (e) => search(e.target.value));
+  on(root, 'click', '[data-visit]', (e, b) => {
+    const v = snap.visits.find((x) => x.id === b.dataset.visit);
+    if (v) openTimes(ctx, v, boxName(v.boxId), s, load);
+  });
 
   await load();
 }

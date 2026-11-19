@@ -3,6 +3,9 @@
 -- Lỗi trả về dạng 'TRUNG: …' / 'LOI: …' / 'QUYEN: …' để web hiện đúng câu.
 
 create extension if not exists btree_gist;
+-- Bỏ dấu tiếng Việt khi tìm khách (Supabase để extension trong schema 'extensions')
+create schema if not exists extensions;
+create extension if not exists unaccent schema extensions;
 
 -- ===== Bảng =====
 create table if not exists public.staff (
@@ -153,6 +156,11 @@ language sql security definer set search_path = public as $$
   insert into visit_log (visit_id, by_name, action, detail) values (p_visit, coalesce((app__me()).name, ''), p_action, coalesce(p_detail, ''))
 $$;
 
+create or replace function public.app__fold(t text) returns text
+language sql stable set search_path = public, extensions as $$
+  select lower(extensions.unaccent(replace(replace(coalesce(t, ''), 'đ', 'd'), 'Đ', 'D')))
+$$;
+
 create or replace function public.app__fmt_min(m int) returns text
 language sql immutable as $$ select lpad(((m / 60) % 24)::text, 2, '0') || ':' || lpad((m % 60)::text, 2, '0') $$;
 
@@ -252,7 +260,8 @@ end $$;
 revoke all on function public.app__vn_ts(date, int), public.app__ms(timestamptz), public.app__visit_hold(), public.app__me(), public.app__need(text),
   public.app__norm_phone(text), public.app__log(text, text, text), public.app__fmt_min(int), public.app__extra(int),
   public.app__clash(text, tstzrange, text[]), public.app__visit_json(public.visits), public.app__settings_json(),
-  public.app__customer_upsert(text, text, text), public.app__check_booking(jsonb, text[], boolean), public.app__check_sit(text, text)
+  public.app__customer_upsert(text, text, text), public.app__check_booking(jsonb, text[], boolean), public.app__check_sit(text, text),
+  public.app__fold(text)
   from public, anon, authenticated;
 
 -- ===== Hàm web gọi =====
@@ -270,6 +279,9 @@ create or replace function public.app_settings_save(p jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
   perform app__need('chu');
+  if extract(minute from (p ->> 'open')::time) not in (0, 30) or extract(minute from (p ->> 'close')::time) not in (0, 30) then
+    raise exception 'LOI: Giờ mở / đóng cửa phải tròn giờ hoặc rưỡi (vd 08:00, 08:30)';
+  end if;
   if (p ->> 'close')::time <= (p ->> 'open')::time then raise exception 'LOI: Giờ đóng cửa phải sau giờ mở cửa'; end if;
   if (p ->> 'perBox')::int < 1 or (p ->> 'freeMin')::int < 30 or (p ->> 'holdMin')::int < 30 then raise exception 'LOI: Số chưa hợp lệ'; end if;
   update settings set open = (p ->> 'open')::time, close = (p ->> 'close')::time, hold_min = (p ->> 'holdMin')::int,
@@ -349,7 +361,7 @@ end $$;
 
 create or replace function public.app_booking_create(p jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare u staff; cid text; kid text; bid text; i int := 0; n int; left_p int; k int; vid text; out jsonb := '[]'::jsonb; s settings;
+declare u staff; cid text; kid text; bid text; i int := 0; n int; left_p int; k int; vid text; v_out jsonb := '[]'::jsonb; s settings;
 begin
   u := app__need();
   perform pg_advisory_xact_lock(4242);
@@ -369,16 +381,16 @@ begin
     values (kid, bid, cid, 'dat', (p ->> 'date')::date, (p ->> 'startMin')::int, (p ->> 'durMin')::int, k) returning id into vid;
     perform app__log(vid, 'Đặt trước', n || ' box');
   end loop;
-  select coalesce(jsonb_agg(app__visit_json(v)), '[]'::jsonb) into out from visits v where v.booking_id = kid;
+  select coalesce(jsonb_agg(app__visit_json(v)), '[]'::jsonb) into v_out from visits v where v.booking_id = kid;
   return jsonb_build_object('booking', (select jsonb_build_object('id', id, 'customerId', customer_id, 'date', biz_date, 'startMin', start_min, 'durMin', dur_min,
-    'people', people, 'channel', channel, 'note', note, 'createdBy', created_by, 'createdAt', app__ms(created_at)) from bookings where id = kid), 'visits', out);
+    'people', people, 'channel', channel, 'note', note, 'createdBy', created_by, 'createdAt', app__ms(created_at)) from bookings where id = kid), 'visits', v_out);
 exception when exclusion_violation then
   raise exception 'TRUNG: Vừa có người đặt giờ này';
 end $$;
 
 create or replace function public.app_booking_update(p_id text, p jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare k bookings; open_ids text[]; same boolean; cid text; bid text; v visits; i int := 0; n int; left_p int; ppl int; s settings; out jsonb;
+declare k bookings; open_ids text[]; same boolean; cid text; bid text; v visits; i int := 0; n int; left_p int; ppl int; s settings; v_out jsonb;
 begin
   perform app__need();
   perform pg_advisory_xact_lock(4242);
@@ -411,9 +423,9 @@ begin
       perform app__log(v.id, 'Sửa phiếu');
     end if;
   end loop;
-  select coalesce(jsonb_agg(app__visit_json(x)), '[]'::jsonb) into out from visits x where x.booking_id = p_id;
+  select coalesce(jsonb_agg(app__visit_json(x)), '[]'::jsonb) into v_out from visits x where x.booking_id = p_id;
   return jsonb_build_object('booking', (select jsonb_build_object('id', id, 'customerId', customer_id, 'date', biz_date, 'startMin', start_min, 'durMin', dur_min,
-    'people', people, 'channel', channel, 'note', note, 'createdBy', created_by, 'createdAt', app__ms(created_at)) from bookings where id = p_id), 'visits', out);
+    'people', people, 'channel', channel, 'note', note, 'createdBy', created_by, 'createdAt', app__ms(created_at)) from bookings where id = p_id), 'visits', v_out);
 exception when exclusion_violation then
   raise exception 'TRUNG: Vừa có người đặt giờ này';
 end $$;
@@ -460,15 +472,20 @@ begin
   return app__visit_json(v);
 end $$;
 
-create or replace function public.app_check_out(p_id text) returns jsonb
+-- p_out_ms: giờ ra thật (ms) khi quên bấm, hôm sau mới bấm; bỏ trống = lúc này
+drop function if exists public.app_check_out(text);
+create or replace function public.app_check_out(p_id text, p_out_ms bigint default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v visits; m int;
+declare v visits; m int; o timestamptz;
 begin
   perform app__need();
   select * into v from visits where id = p_id;
   if v.id is null or v.status <> 'ngoi' then raise exception 'LOI: Lượt này không đang ngồi'; end if;
-  m := floor(extract(epoch from (now() - v.in_at)) / 60);
-  update visits set status = 've', out_at = now(), minutes = m, extra = app__extra(m) where id = p_id returning * into v;
+  o := case when p_out_ms is null then now() else to_timestamp(p_out_ms / 1000.0) end;
+  if o <= v.in_at then raise exception 'LOI: Giờ ra phải sau giờ vào'; end if;
+  if o > now() + interval '1 minute' then raise exception 'LOI: Giờ ra chưa tới'; end if;
+  m := floor(extract(epoch from (o - v.in_at)) / 60);
+  update visits set status = 've', out_at = o, minutes = m, extra = app__extra(m) where id = p_id returning * into v;
   perform app__log(v.id, 'Khách về', 'Ngồi ' || (m / 60) || 'g' || lpad((m % 60)::text, 2, '0') || ' → thêm ' || v.extra || ' giờ');
   return jsonb_build_object('visit', app__visit_json(v), 'minutes', v.minutes, 'extra', v.extra);
 end $$;
@@ -514,9 +531,11 @@ begin
   perform app__need();
   select * into v from visits where id = p_id;
   if v.id is null then raise exception 'LOI: Không tìm thấy lượt'; end if;
+  if v.status not in ('ngoi', 've') then raise exception 'LOI: Chỉ sửa giờ của lượt đã vào'; end if;
   if p ? 'inAt' and p ->> 'inAt' is not null then v.in_at := to_timestamp((p ->> 'inAt')::bigint / 1000.0); end if;
   if p ? 'outAt' and p ->> 'outAt' is not null then v.out_at := to_timestamp((p ->> 'outAt')::bigint / 1000.0); end if;
   if v.out_at is not null and v.in_at is not null and v.out_at <= v.in_at then raise exception 'LOI: Giờ ra phải sau giờ vào'; end if;
+  if v.in_at > now() + interval '1 minute' or coalesce(v.out_at, now()) > now() + interval '1 minute' then raise exception 'LOI: Giờ này chưa tới'; end if;
   if v.status = 've' then m := floor(extract(epoch from (v.out_at - v.in_at)) / 60); v.minutes := m; v.extra := app__extra(m); end if;
   update visits set in_at = v.in_at, out_at = v.out_at, minutes = v.minutes, extra = v.extra where id = p_id returning * into v;
   perform app__log(v.id, 'Sửa giờ vào/ra', case when v.minutes is not null then 'Ngồi ' || (v.minutes / 60) || 'g' || lpad((v.minutes % 60)::text, 2, '0') || ' → thêm ' || v.extra || ' giờ' else '' end);
@@ -525,7 +544,7 @@ end $$;
 
 create or replace function public.app_customers_find(p_q text) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
-declare q text := lower(trim(coalesce(p_q, ''))); d text := regexp_replace(coalesce(p_q, ''), '\D', '', 'g');
+declare q text := app__fold(trim(coalesce(p_q, ''))); d text := regexp_replace(coalesce(p_q, ''), '\D', '', 'g');
 begin
   perform app__need();
   if length(q) < 2 then return '[]'::jsonb; end if;
@@ -539,8 +558,8 @@ begin
       'topBox', (select b.name from visits v join boxes b on b.id = v.box_id where v.customer_id = c.id and v.status in ('ngoi', 've')
                  group by b.name order by count(*) desc limit 1)))
     from (select * from customers c
-          where lower(c.name) like '%' || q || '%' or (length(d) >= 3 and c.phone like '%' || d || '%')
-             or (c.tiktok <> '' and lower(c.tiktok) like '%' || ltrim(q, '@') || '%')
+          where app__fold(c.name) like '%' || q || '%' or (length(d) >= 3 and c.phone like '%' || d || '%')
+             or (c.tiktok <> '' and app__fold(c.tiktok) like '%' || ltrim(q, '@') || '%')
           limit 20) c), '[]'::jsonb);
 end $$;
 

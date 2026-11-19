@@ -92,7 +92,7 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
       needChu();
       const n = { ...st.settings, ...s };
       for (const k of ['holdMin', 'freeMin', 'graceMin', 'lateMin', 'perBox']) n[k] = Number(n[k]);
-      if (!/^\d{2}:\d{2}$/.test(n.open) || !/^\d{2}:\d{2}$/.test(n.close)) err('LOI', 'Giờ chưa đúng');
+      if (!/^\d{2}:(00|30)$/.test(n.open) || !/^\d{2}:(00|30)$/.test(n.close)) err('LOI', 'Giờ mở / đóng cửa phải tròn giờ hoặc rưỡi (vd 08:00, 08:30)');
       if (n.close <= n.open) err('LOI', 'Giờ đóng cửa phải sau giờ mở cửa');
       if (n.perBox < 1 || n.freeMin < 30 || n.holdMin < 30) err('LOI', 'Số chưa hợp lệ');
       st.settings = n; save(); return copy(n);
@@ -180,11 +180,15 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
       v.status = 'ngoi'; v.inAt = clock.now(); log(v, 'Khách vào'); save(); return copy(v);
     },
 
-    async checkOut(visitId) {
+    // outAt: giờ ra thật (mặc định lúc này) — dùng khi quên bấm, hôm sau mới bấm
+    async checkOut(visitId, outAt = null) {
       needMe();
       const v = visit(visitId);
       if (v.status !== 'ngoi') err('LOI', 'Lượt này không đang ngồi');
-      v.status = 've'; v.outAt = clock.now();
+      const out = outAt == null ? clock.now() : Number(outAt);
+      if (!(out > v.inAt)) err('LOI', 'Giờ ra phải sau giờ vào');
+      if (out > clock.now() + MIN) err('LOI', 'Giờ ra chưa tới');
+      v.status = 've'; v.outAt = out;
       const res = finish(v);
       log(v, 'Khách về', `Ngồi ${fmtDur(res.minutes)} → thêm ${res.extra} giờ`);
       res.visit = copy(v); save(); return res;
@@ -212,9 +216,11 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
     async editTimes(visitId, { inAt, outAt }) {
       needMe();
       const v = visit(visitId);
-      if (inAt) v.inAt = inAt;
-      if (outAt) v.outAt = outAt;
-      if (v.outAt && v.inAt && v.outAt <= v.inAt) err('LOI', 'Giờ ra phải sau giờ vào');
+      if (!['ngoi', 've'].includes(v.status)) err('LOI', 'Chỉ sửa giờ của lượt đã vào');
+      const nIn = inAt ? Number(inAt) : v.inAt, nOut = outAt ? Number(outAt) : v.outAt;
+      if (nOut && nIn && nOut <= nIn) err('LOI', 'Giờ ra phải sau giờ vào');
+      if ((nIn && nIn > clock.now() + MIN) || (nOut && nOut > clock.now() + MIN)) err('LOI', 'Giờ này chưa tới');
+      v.inAt = nIn; v.outAt = nOut;
       let res = { visit: v, minutes: null, extra: null };
       if (v.status === 've') res = finish(v);
       log(v, 'Sửa giờ vào/ra', v.minutes != null ? `Ngồi ${fmtDur(v.minutes)} → thêm ${v.extra} giờ` : '');

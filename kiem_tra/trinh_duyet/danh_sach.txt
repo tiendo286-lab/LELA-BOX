@@ -9,3 +9,5 @@ flow_lich nv phone
 flow_khach_bc chu
 flow_khach_bc chu phone
 flow_khach_bc nv
+flow_sua_gio nv
+flow_sua_gio nv phone

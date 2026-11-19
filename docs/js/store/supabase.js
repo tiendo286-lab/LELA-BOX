@@ -65,7 +65,7 @@ export function createSupabaseStore({ supabaseUrl, anonKey }) {
     cancelBooking: (id) => rpc('app_booking_cancel', { p_id: id }),
     walkIn: (input) => rpc('app_walk_in', { p: input }),
     checkIn: (id) => rpc('app_check_in', { p_id: id }),
-    checkOut: (id) => rpc('app_check_out', { p_id: id }),
+    checkOut: (id, outAt = null) => rpc('app_check_out', { p_id: id, p_out_ms: outAt }),
     noShow: (id) => rpc('app_no_show', { p_id: id }),
     moveBox: (id, boxId) => rpc('app_move_box', { p_id: id, p_box: boxId }),
     editTimes: (id, t) => rpc('app_edit_times', { p_id: id, p: t }),

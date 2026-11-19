@@ -46,7 +46,8 @@ export function peakGrid(visits, from, to, s) {
 export function extraList(visits, from, to, s) {
   const items = visits
     .filter((v) => v.status === 've' && v.date >= from && v.date <= to)
-    .map((v) => { const minutes = minutesOf(v); return { visit: v, minutes, extra: extraHours(minutes, s) }; })
+    // Dùng giờ thêm đã lưu lúc khách về (đổi cài đặt sau này không làm đổi số cũ)
+    .map((v) => { const minutes = minutesOf(v); return { visit: v, minutes, extra: v.extra ?? extraHours(minutes, s) }; })
     .filter((x) => x.extra > 0)
     .sort((a, b) => a.visit.inAt - b.visit.inAt);
   return { items, total: items.reduce((a, x) => a + x.extra, 0) };

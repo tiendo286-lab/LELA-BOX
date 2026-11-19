@@ -1,13 +1,15 @@
 // Tab Khách: tìm theo SĐT / tên / TikTok, xem các lượt, đặt cho khách.
 import { html, str, $, on } from '../ui.js';
-import { fmtMin, fmtDay, fromMs } from '../time.js';
+import { fmtMin, fmtDay, fromMs, fmtDur } from '../time.js';
 import { STATUS_LABEL } from '../rules.js';
 import { fmtPhone } from '../board.js';
 import { openBooking } from './phieu.js';
+import { openTimes } from './gio.js';
 
 export default async function render(root, ctx) {
   const { store } = ctx;
   const boxes = await store.listBoxes({ all: true });
+  const settings = await store.getSettings();
   const boxName = (id) => (boxes.find((b) => b.id === id) || {}).name || id;
   let results = [];
   const open = new Set();
@@ -30,7 +32,8 @@ export default async function render(root, ctx) {
           <div class="actions"><a class="btn" href="tel:${r.customer.phone}">Gọi</a><button type="button" class="primary" data-act="book">Đặt cho khách này</button></div>
           <ul class="kvis-list">${r.visits.slice(0, 15).map((v) => html`<li class="kvis">
             ${v.bookingId && v.status === 'dat' ? html`<button type="button" class="ghost" data-booking="${v.bookingId}">${when(v)} · ${boxName(v.boxId)} · ${STATUS_LABEL[v.status]} ✎</button>`
-              : html`<span>${when(v)} · ${boxName(v.boxId)} · ${STATUS_LABEL[v.status]}${v.extra ? html` · thêm ${v.extra} giờ` : ''}</span>`}
+              : v.status === 've' ? html`<button type="button" class="ghost" data-visit="${v.id}">${when(v)} · ${boxName(v.boxId)} · ${STATUS_LABEL[v.status]} · ngồi ${fmtDur(v.minutes || 0)}${v.extra ? html` · thêm ${v.extra} giờ` : ''} · Sửa giờ ✎</button>`
+              : html`<span>${when(v)} · ${boxName(v.boxId)} · ${STATUS_LABEL[v.status]}</span>`}
           </li>`)}</ul>
         </div>` : ''}
       </div>`)}` : html`<p class="muted">Không tìm thấy khách.</p>`);
@@ -43,6 +46,10 @@ export default async function render(root, ctx) {
   on(root, 'click', '[data-act="book"]', async (e, b) => {
     const r = results.find((x) => x.customer.id === b.closest('.kcard').dataset.id);
     if (await openBooking(ctx, { customer: r.customer })) await search();
+  });
+  on(root, 'click', '[data-visit]', (e, b) => {
+    const v = results.flatMap((r) => r.visits).find((x) => x.id === b.dataset.visit);
+    if (v) openTimes(ctx, v, boxName(v.boxId), settings, search);
   });
   on(root, 'click', '[data-booking]', async (e, b) => { if (await openBooking(ctx, { bookingId: b.dataset.booking })) await search(); });
   draw();

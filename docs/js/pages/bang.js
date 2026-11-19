@@ -1,9 +1,9 @@
 // Bảng 12 box lúc này: trạng thái, khách vào / về, đổi box, nhắc việc.
 import { html, str, $, on, openSheet, toast, showError } from '../ui.js';
-import { fmtMin, fmtDur, fromMs, atMs, toMin } from '../time.js';
-import { boxState, reminders, summary, fmtPhone } from '../board.js';
+import { fmtMin, fmtDur, fromMs, atMs, toMin, dayWindow } from '../time.js';
+import { boxState, summary, fmtPhone } from '../board.js';
 import { checkCheckIn, extraHours } from '../rules.js';
-import { mountReminders } from './nhac.js';
+import { openTimes, previewTimes } from './gio.js';
 
 const KIND_TEXT = { trong: 'Trống', ngoi: 'Đang ngồi', sap_het: 'Sắp hết giờ', qua_gio: 'Quá giờ', tam_ngung: 'Tạm ngừng' };
 
@@ -11,7 +11,7 @@ export default async function render(root, ctx) {
   const { store } = ctx;
   let snap = null;
 
-  root.innerHTML = str(html`<div id="nhac"></div><p class="sum" id="sum"></p><div class="tiles" id="tiles"></div>
+  root.innerHTML = str(html`<p class="sum" id="sum"></p><div class="tiles" id="tiles"></div>
     <p class="muted small">Chạm vào một box để cho khách vào / về. Bảng tự cập nhật mỗi 30 giây.</p>`);
 
   const cust = (id) => snap.customers.find((c) => c.id === id);
@@ -35,7 +35,7 @@ export default async function render(root, ctx) {
         <span class="t-sub">${x.visit ? html`${x.visit.people} người${x.kind === 'qua_gio' ? html` · +${extraHours(x.elapsed, s)} giờ` : ''}` : ''}</span>
         ${x.next ? html`<span class="t-next">đặt ${fmtMin(x.next.startMin)}</span>` : ''}
       </button>`)}`);
-    mountReminders($('#nhac', root), reminders(live(), snap.boxes, snap.customers, now, s), openBox);
+    if (ctx.refreshReminders) ctx.refreshReminders();
   }
 
   const act = async (fn, ok) => {
@@ -93,23 +93,34 @@ export default async function render(root, ctx) {
       <div id="step" class="actions"><button class="primary" data-act="out">Khách về</button><button data-act="move">Đổi box</button><button data-act="edit">Sửa giờ vào</button></div>`);
     const el = sh.el, step = $('#step', el);
     const inDate = fromMs(v.inAt).date;
-    const calc = (outMin) => { const mins = Math.floor((atMs(inDate, outMin) - v.inAt) / 60000); return `Ngồi ${fmtDur(mins)} → tính thêm ${extraHours(mins, s)} giờ`; };
     on(el, 'click', '[data-act="out"]', () => {
-      const nowMin = fromMs(ctx.now()).min;
-      step.innerHTML = str(html`<label>Giờ ra<input name="out" type="time" value="${fmtMin(nowMin)}"></label>
-        <p class="big" id="calc">${calc(nowMin)}</p>
+      // Mặc định giờ ra = lúc này; quên bấm qua giờ đóng cửa / sang hôm sau thì mặc định = giờ đóng cửa ngày khách vào
+      const nowMs = ctx.now(), closeMs = atMs(inDate, dayWindow(s).closeMin);
+      const useNow = nowMs <= closeMs;
+      const defMin = fromMs(useNow ? nowMs : closeMs).min;
+      step.innerHTML = str(html`${useNow ? '' : html`<p class="warntext">Khách vào ngày ${inDate.slice(8, 10)}/${inDate.slice(5, 7)} lúc ${fmtMin(fromMs(v.inAt).min)} — chưa bấm về. Ghi giờ khách thực sự về:</p>`}
+        <label>Giờ ra<input name="out" type="time" value="${fmtMin(defMin)}"></label>
+        <p class="big" id="calc"></p><p class="err" id="calc-err"></p>
         <button class="primary" data-act="out-ok">Xác nhận khách về</button>`);
-      $('[name="out"]', step).addEventListener('input', (e) => { $('#calc', step).textContent = calc(toMin(e.target.value)); });
+      const inp = $('[name="out"]', step);
+      const outMs = () => (inp.value ? atMs(inDate, toMin(inp.value)) : null);
+      const show = () => {
+        // Không sửa giờ và mặc định là lúc này → tính tới lúc này (giữ cả số giây)
+        const o = useNow && inp.value === fmtMin(defMin) ? ctx.now() : outMs();
+        const p = previewTimes(v.inAt, o, ctx.now(), s);
+        $('#calc', step).textContent = p.text; $('#calc-err', step).textContent = p.error || '';
+        $('[data-act="out-ok"]', step).disabled = !!p.error;
+        return { o, p };
+      };
+      inp.addEventListener('input', show); show();
+      step.__out = () => (useNow && inp.value === fmtMin(defMin) ? null : outMs());
+      step.__show = show;
     });
     on(el, 'click', '[data-act="out-ok"]', async () => {
-      const outMin = toMin($('[name="out"]', step).value);
-      const nowMin = fromMs(ctx.now()).min;
+      if (step.__show().p.error) return;
+      const outAt = step.__out();
       sh.close();
-      await act(async () => {
-        let r = await store.checkOut(v.id);
-        if (outMin !== nowMin) r = await store.editTimes(v.id, { outAt: atMs(inDate, outMin) });
-        return r;
-      }, (r) => `${b.name}: khách về — ngồi ${fmtDur(r.minutes)}, tính thêm ${r.extra} giờ`);
+      await act(() => store.checkOut(v.id, outAt), (r) => `${b.name}: khách về — ngồi ${fmtDur(r.minutes)}, tính thêm ${r.extra} giờ`);
     });
     on(el, 'click', '[data-act="move"]', () => {
       const alts = checkCheckIn(b.id, cctx(), v.id).alternatives;
@@ -118,19 +129,13 @@ export default async function render(root, ctx) {
         <div class="actions">${free.map((x) => html`<button data-move="${x.id}">${x.name}${alts.includes(x.id) ? ' ★' : ''}</button>`)}</div>`);
     });
     on(el, 'click', '[data-move]', async (e, x) => { sh.close(); await act(() => store.moveBox(v.id, x.dataset.move), `Đã đổi sang ${boxOf(x.dataset.move).name}`); });
-    on(el, 'click', '[data-act="edit"]', () => {
-      step.innerHTML = str(html`<label>Giờ vào<input name="in" type="time" value="${fmtMin(fromMs(v.inAt).min)}"></label>
-        <button class="primary" data-act="edit-ok">Lưu giờ vào</button>`);
-    });
-    on(el, 'click', '[data-act="edit-ok"]', async () => {
-      const m = toMin($('[name="in"]', step).value);
-      sh.close();
-      await act(() => store.editTimes(v.id, { inAt: atMs(inDate, m) }), 'Đã sửa giờ vào');
-    });
+    on(el, 'click', '[data-act="edit"]', () => { sh.close(); openTimes(ctx, v, b.name, s, draw); });
   }
 
   on(root, 'click', '.tile', (e, t) => openBox(t.dataset.box));
   await draw();
+  const want = ctx.params.get('box');
+  if (want && boxOf(want)) { history.replaceState(null, '', '#/bang'); openBox(want); }
   const timer = setInterval(() => { if (!document.querySelector('.sheet-bg')) draw(); }, 30000);
   return () => clearInterval(timer);
 }

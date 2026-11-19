@@ -2,6 +2,8 @@
 import { makeStore } from './store/index.js';
 import * as clock from './clock.js';
 import { fmtMin, fromMs } from './time.js';
+import { reminders } from './board.js';
+import { mountReminders } from './pages/nhac.js';
 import { html, str, $, on, toast, closeSheets } from './ui.js';
 
 clock.fromQuery(location.search);
@@ -76,18 +78,33 @@ async function render() {
     ${store.volatile ? html`<div class="volatile">Dữ liệu chạy thử sẽ mất khi tải lại trang (trình duyệt chặn lưu).</div>` : ''}
     <nav class="tabs">${Object.entries(PAGES).filter(([, p]) => !p.chu || me.role === 'chu')
       .map(([h, p]) => html`<a href="${h}" class="${h === path ? 'on' : ''}">${p.title}</a>`)}</nav>
+    <div id="nhac-app" class="nhac-wrap"></div>
     <main id="page"><p class="loading">Đang tải…</p></main>`);
   $('#logout').onclick = async () => { await store.logout(); me = null; render(); };
   const page = $('#page');
-  const ctx = { store, me, settings, params, go, refresh: render, now: clock.now };
+  const ctx = { store, me, settings, params, go, refresh: render, now: clock.now, refreshReminders: pollReminders };
   try {
     const mod = await PAGES[path].load();
     cleanup = (await mod.default(page, ctx)) || null;
+    await pollReminders();
   } catch (e) {
     page.innerHTML = str(html`<p class="err">Không mở được trang: ${e.message}</p>`);
     console.error(e);
   }
 }
+
+// Nhắc việc + chuông chạy ở MỌI tab (nhân viên hay ở tab Lịch khi chat TikTok)
+async function pollReminders() {
+  const el = $('#nhac-app');
+  if (!el || !me) return;
+  try {
+    const now = clock.now();
+    const snap = await store.snapshot(fromMs(now).date);
+    const live = snap.visits.filter((v) => v.status === 'dat' || v.status === 'ngoi');
+    mountReminders(el, reminders(live, snap.boxes, snap.customers, now, snap.settings), (boxId) => go('#/bang?box=' + boxId));
+  } catch (e) { /* lần sau thử lại */ }
+}
+setInterval(pollReminders, 30000);
 
 window.addEventListener('hashchange', render);
 clearInterval(tick);
