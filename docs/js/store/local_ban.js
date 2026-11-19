@@ -1,5 +1,5 @@
 // Phần BÁN HÀNG + KHO của bản chạy thử (gắn vào createLocalStore). Cùng tên hàm với store/supabase.js.
-import { priceOrder, settle, minOrder, voucherError } from '../money.js';
+import { priceGroup, settle, minOrder, voucherError } from '../money.js';
 import { deductions, expectedQty } from '../stock.js';
 import { extraHours } from '../rules.js';
 import { fromMs } from '../time.js';
@@ -141,16 +141,19 @@ export function addSales(api, h) {
       const isLast = lastOf.get(v.id) === o.id;
       const minutes = v.status === 'ngoi' ? Math.floor((out - v.inAt) / 60000) : v.minutes || 0;
       const eh = isLast ? (v.status === 'ngoi' ? extraHours(minutes, st.settings) : v.extra || 0) : 0;
-      const priced = priceOrder({ ...o, extraHours: eh, extraPrice: st.settings.extraPrice }, { promotions: st.promotions, voucher: voucherByCode(o.voucherCode), at: out });
-      return { order: o, priced, isLast, extraHours: eh, minutes };
+      return { order: o, isLast, extraHours: eh, minutes };
     });
+    // Thu chung = một hoá đơn: chọn 1 khuyến mãi trên cả nhóm (voucher lấy mã của phiếu đầu tiên có mã)
+    const code = (os.find((o) => o.voucherCode) || {}).voucherCode;
+    const g = priceGroup(rows.map((r) => ({ ...r.order, extraHours: r.extraHours, extraPrice: st.settings.extraPrice })), { promotions: st.promotions, voucher: voucherByCode(code), at: out });
+    rows.forEach((r, i) => { r.priced = g.priced[i]; });
     const warns = [];
     for (const v of visits) {
       const lines = st.orders.filter((o) => o.visitId === v.id && o.status !== 'huy').flatMap((o) => o.lines);
       const m = minOrder(lines, v.people, st.settings.minPerPerson);
       if (!m.ok) warns.push(`${boxName(v.boxId)}: ${v.people} người mới gọi ${m.have} món`);
     }
-    return { rows, visits, out, total: rows.reduce((n, r) => n + r.priced.total, 0), boxNames: [...new Set(visits.map((v) => boxName(v.boxId)))], minWarn: warns.join('; ') || null };
+    return { rows, visits, out, groupPromo: g.promo, total: g.total, boxNames: [...new Set(visits.map((v) => boxName(v.boxId)))], minWarn: warns.join('; ') || null };
   }
 
   function receiptFor(os, reprint) {
@@ -163,7 +166,7 @@ export function addSales(api, h) {
       inAt: Math.min(...visits.map((v) => v.inAt || Infinity)), outAt: root.paidAt && visits.every((v) => v.outAt) ? Math.max(...visits.map((v) => v.outAt)) : null,
       minutes: visits.length === 1 ? visits[0].minutes ?? null : null,
       lines: os.flatMap((o) => o.lines.filter((l) => !l.voided)),
-      priced: { goods: sum('goods'), extraAmount: sum('extraAmount'), extraHours: os.reduce((n, o) => n + (o.extraHours || 0), 0), extraPrice: st.settings.extraPrice,
+      priced: { goods: sum('goods'), extraAmount: sum('extraAmount'), extraHours: os.reduce((n, o) => n + (o.extraHours || 0), 0), extraPrice: (os.find((o) => o.extraHours > 0) || root).extraPrice ?? st.settings.extraPrice,
         promos: os.map((o) => o.priced && o.priced.promo).filter(Boolean), manualAmount: sum('manualAmount'), total: sum('total') },
       payments: root.payments, change: root.change, paidBy: root.paidBy, at: root.paidAt, reprint, voided: root.status === 'huy',
     });
@@ -190,7 +193,12 @@ export function addSales(api, h) {
         return { id: id(), menuItemId: m.id, kind: m.kind, group: m.group, name: m.name, price: m.price, qty, note: str(it.note), picks,
           ...(m.kind === 'combo' ? { serves: m.serves } : {}), sentAt: null, voided: null, addedBy: needMe().name, at: nowMs() };
       });
-      o.lines.push(...add); save(); return copy(o);
+      // Món thường chưa gửi, cùng món + cùng ghi chú → cộng vào dòng sẵn có (bấm nhanh nhiều lần không mất số)
+      for (const l of add) {
+        const same = l.kind !== 'combo' && o.lines.find((x) => x.menuItemId === l.menuItemId && !x.sentAt && !x.voided && x.kind !== 'combo' && (x.note || '') === l.note);
+        if (same) same.qty += l.qty; else o.lines.push(l);
+      }
+      save(); return copy(o);
     },
     async removeLine(orderId, lineId, auth = null) {
       needMe();
@@ -204,14 +212,15 @@ export function addSales(api, h) {
       }
       save(); return copy(o);
     },
-    async setLineQty(orderId, lineId, qty) {
+    // Cộng / trừ số lượng dòng chưa gửi (gửi số thay đổi, không gửi số tuyệt đối); về 0 thì xoá dòng
+    async bumpLine(orderId, lineId, delta) {
       needMe();
       const o = openOrder(orderId);
       const l = o.lines.find((x) => x.id === lineId) || err('LOI', 'Không tìm thấy món');
       if (l.sentAt || l.voided) err('LOI', 'Món đã gửi pha chế — huỷ món thay vì sửa');
-      const q = int(qty);
-      if (q < 1) err('LOI', 'Số lượng phải từ 1');
-      l.qty = q; save(); return copy(o);
+      const q = l.qty + int(delta);
+      if (q < 1) o.lines = o.lines.filter((x) => x.id !== lineId); else l.qty = q;
+      save(); return copy(o);
     },
     async sendToBar(orderId) {
       needMe();
@@ -270,9 +279,9 @@ export function addSales(api, h) {
         const o = row.order;
         Object.assign(o, { status: 'da_thu', priced: row.priced, extraHours: row.extraHours, extraPrice: st.settings.extraPrice, paidBy: u.name, paidAt: at,
           payments: o === root ? r.payments : [], change: o === root ? r.change : 0, paidWith: o === root ? null : root.id });
-        if (row.priced.promo && row.priced.promo.source === 'voucher') { const v = voucherByCode(o.voucherCode); if (v) v.used = (v.used || 0) + 1; }
         for (const d of deductions(o.lines, st.stockItems)) pushMove({ stockItemId: d.stockItemId, kind: 'ban', qty: d.qty, orderId: o.id });
       }
+      if (q.groupPromo && q.groupPromo.source === 'voucher') { const v = voucherByCode(q.groupPromo.id); if (v) v.used = (v.used || 0) + 1; }
       for (const v of q.visits) {
         if (v.status === 'ngoi' && !st.orders.some((o) => o.visitId === v.id && o.status === 'mo')) h.checkOutVisit(v, outAt == null ? null : q.out);
       }
@@ -289,8 +298,26 @@ export function addSales(api, h) {
       for (const x of grp) {
         Object.assign(x, { status: 'huy', voidedBy: by, voidedAt: at, voidReason: str(auth && auth.reason) });
         S().stockMoves.filter((m) => m.orderId === x.id && m.kind === 'ban').forEach((m) => pushMove({ stockItemId: m.stockItemId, kind: 'hoan', qty: m.qty, orderId: x.id }));
+        // Huỷ & thu lại: mở lại phiếu mới chép các món (giữ trạng thái đã gửi pha chế), thu lại được dù lượt đã về
+        if (auth && auth.reopen) {
+          const n = newOrder(h.visit(x.visitId), x.id);
+          n.lines = x.lines.filter((l) => !l.voided).map((l) => ({ ...copy(l), id: id() }));
+          n.voucherCode = x.voucherCode;
+        }
       }
       save(); return copy(o);
+    },
+    async billsOfDay(date) {
+      needMe();
+      const st = S();
+      const roots = st.orders.map((o, i) => ({ o, i })).filter(({ o }) => !o.paidWith && (o.status === 'da_thu' || o.status === 'huy') && fromMs(o.paidAt).date === date)
+        .sort((a, b) => b.o.paidAt - a.o.paidAt || b.i - a.i);
+      return copy(roots.map(({ o }) => {
+        const grp = groupOf(o);
+        const vs = [...new Set(grp.map((x) => x.visitId))].map((vid) => st.visits.find((v) => v.id === vid)).filter(Boolean);
+        return { orderId: o.id, at: o.paidAt, boxNames: [...new Set(vs.map((v) => boxName(v.boxId)))], total: grp.reduce((n, x) => n + x.priced.total, 0),
+          payments: o.payments, change: o.change, status: o.status, paidBy: o.paidBy, voidedBy: o.voidedBy, voidedAt: o.voidedAt, voidReason: o.voidReason };
+      }));
     },
     async receiptOf(orderId) {
       needMe();

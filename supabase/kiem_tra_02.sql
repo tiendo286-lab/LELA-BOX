@@ -84,5 +84,32 @@ begin
   r := r || format('doanh thu trong ngày: %s phiếu (mong 1 — phiếu đã huỷ vẫn hiện để trừ); ', jsonb_array_length(app_orders_range(current_date - 1, current_date + 1)));
   r := r || format('duyệt: %s (mong giam_tay, huy_hoa_don); ', (select string_agg(kind, ', ' order by id) from approvals));
 
+  -- 6) Sửa sau duyệt: gộp món bấm nhiều lần, cộng/trừ số lượng, huỷ & thu lại, trả chung + voucher số tiền, danh sách hoá đơn
+  perform set_config('request.jwt.claims', as_nv, true);
+  perform app_order_add(o2, jsonb_build_array(jsonb_build_object('menuItemId', mid, 'qty', 1)));
+  x := app_order_add(o2, jsonb_build_array(jsonb_build_object('menuItemId', mid, 'qty', 1)));
+  r := r || format('gộp món: %s dòng, SL %s (mong 1, 3); ', jsonb_array_length(x -> 'lines'), x -> 'lines' -> 0 ->> 'qty');
+  x := app_order_line_bump(o2, x -> 'lines' -> 0 ->> 'id', -1);
+  r := r || format('bớt 1: SL %s (mong 2); ', x -> 'lines' -> 0 ->> 'qty');
+  perform set_config('request.jwt.claims', as_chu, true);
+  begin
+    perform app_order_void(o1, '{"reason":"lại"}');
+    r := r || 'HUỶ LẦN 2 KHÔNG BỊ CHẶN (SAI); ';
+  exception when others then r := r || 'huỷ lần 2: ' || sqlerrm || ' (mong LOI: Chỉ huỷ được hoá đơn đã thu); ';
+  end;
+  insert into vouchers (code, kind, value) values ('THU20K', 'amt', 20000);
+  perform app_order_voucher(o2, 'THU20K');
+  x := app_order_quote(jsonb_build_array(o2));
+  r := r || format('voucher 20.000 trên 40.000: giảm %s, tổng %s (mong 20000, 15000 — còn giảm tay 5.000 ở trên); ', x -> 'orders' -> 0 -> 'priced' -> 'promo' ->> 'amount', x ->> 'total');
+  x := app_order_pay(jsonb_build_array(o2), '{"transfer":0,"cashGiven":50000}');
+  r := r || format('voucher dùng %s lần (mong 1); thối %s (mong 35000); ', (select used from vouchers where code = 'THU20K'), x -> 'receipt' ->> 'change');
+  perform app_settings_save('{"extraPrice": 30000}');
+  r := r || format('in lại giữ giá thêm cũ: %s (mong 25000); ', app_order_receipt(o2) -> 'priced' ->> 'extraPrice');
+  x := app_order_void(o2, '{"reason":"thu nhầm","reopen":true}');
+  r := r || format('huỷ & thu lại: phiếu mở mới %s, số món %s (mong 1, 1 dòng SL 2); ',
+    (select count(*) from orders where visit_id = v2 ->> 'id' and status = 'mo'), (select jsonb_array_length(lines) from orders where visit_id = v2 ->> 'id' and status = 'mo'));
+  x := app_bills_of_day((now() at time zone 'Asia/Ho_Chi_Minh')::date);
+  r := r || format('danh sách hoá đơn: %s (mong 2 — cả 2 đã huỷ); ', (select string_agg(b ->> 'status', ',') from jsonb_array_elements(x) b));
+
   raise exception 'REPORT>> %', r;
 end $$;

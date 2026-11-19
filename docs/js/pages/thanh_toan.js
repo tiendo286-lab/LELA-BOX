@@ -1,7 +1,7 @@
 // Màn thanh toán & khách về: giờ ngồi thêm, khuyến mãi / voucher, giảm tay (PIN), tách bill, trả chung, chia tiền, in hoá đơn.
 import { html, str, $, $$, on, openSheet, toast, showError } from '../ui.js';
 import { fmtMoney, settle } from '../money.js';
-import { fmtMin, fmtDur, fromMs, atMs, toMin, dayWindow } from '../time.js';
+import { fmtMin, fmtDur, fromMs, atMs, toMin, dayWindow, addDays } from '../time.js';
 import { receiptHtml, printHtml } from '../print.js';
 import { askPin } from './pin.js';
 
@@ -12,22 +12,30 @@ export async function openPay(ctx, visitId, after) {
   const s = await store.getSettings();
   const now = ctx.now();
   const snap = await store.snapshot(fromMs(now).date);
-  const v = snap.visits.find((x) => x.id === visitId);
-  if (!v || v.status !== 'ngoi') { toast('Lượt này không còn đang ngồi', 'err'); return after(); }
+  // Lượt đã về (huỷ & thu lại hoá đơn) có thể không nằm trong snapshot hôm nay → tìm trong 30 ngày
+  const today = fromMs(now).date;
+  const pool = snap.visits.some((x) => x.id === visitId) ? snap.visits : await store.visitsRange(addDays(today, -30), today);
+  const v = pool.find((x) => x.id === visitId);
+  const hasOpen = async (x) => (await store.ordersOfVisit(x.id)).some((o) => o.status === 'mo');
+  if (!v || (v.status !== 'ngoi' && !(v.status === 've' && (await hasOpen(v))))) { toast('Lượt này không còn phiếu để thu', 'err'); return after(); }
+  const sitting = v.status === 'ngoi';
   const boxName = (id) => (snap.boxes.find((b) => b.id === id) || { name: id }).name;
-  // Các box khác cùng phiếu đặt đang ngồi → cho trả chung
-  const mates = v.bookingId ? snap.visits.filter((x) => x.bookingId === v.bookingId && x.id !== v.id && x.status === 'ngoi') : [];
+  // Các box khác cùng phiếu đặt còn phiếu mở (đang ngồi, hoặc đã về mà vừa huỷ & thu lại) → cho trả chung
+  const mates = [];
+  for (const x of v.bookingId ? pool.filter((y) => y.bookingId === v.bookingId && y.id !== v.id && (y.status === 'ngoi' || y.status === 've')) : []) {
+    if (x.status === 'ngoi' || (await hasOpen(x))) mates.push(x);
+  }
   // Giờ ra mặc định = lúc này; quên bấm qua giờ đóng cửa ngày vào → giờ đóng cửa ngày đó
   const inDate = fromMs(v.inAt).date;
   const closeMs = atMs(inDate, dayWindow(s).closeMin);
-  const useNow = now <= closeMs;
+  const useNow = !sitting || now <= closeMs;
   const defMin = fromMs(useNow ? now : closeMs).min;
 
   let together = false, orders = [], q = null, picked = new Set(), splitMode = false;
   const sh = openSheet(`${boxName(v.boxId)} — thanh toán`, html`
     ${useNow ? '' : html`<p class="warntext">Khách vào ngày ${inDate.slice(8, 10)}/${inDate.slice(5, 7)} lúc ${fmtMin(fromMs(v.inAt).min)} — chưa bấm về. Ghi giờ khách thực sự về:</p>`}
     <div class="row">
-      <label>Giờ ra<input id="pay-out" type="time" value="${fmtMin(defMin)}"></label>
+      ${sitting ? html`<label>Giờ ra<input id="pay-out" type="time" value="${fmtMin(defMin)}"></label>` : html`<p class="muted small">Thu lại hoá đơn — giờ ra và giờ ngồi thêm giữ như lần thu trước.</p>`}
       ${mates.length ? html`<label class="act-label"><input type="checkbox" name="together"> Trả chung cả ${mates.map((x) => boxName(x.boxId)).join(', ')}</label>` : ''}
     </div>
     <div id="bills"></div>
@@ -49,6 +57,7 @@ export async function openPay(ctx, visitId, after) {
   el.classList.add('wide');
 
   const outAt = () => {
+    if (!sitting) return null;
     const val = $('#pay-out', el).value;
     if (useNow && val === fmtMin(defMin)) return null;
     return val ? atMs(inDate, toMin(val)) : null;
@@ -100,7 +109,7 @@ export async function openPay(ctx, visitId, after) {
   // Phiếu nhận voucher / giảm tay: phiếu cuối của lượt (mang giờ thêm) nếu có, không thì phiếu đầu
   const target = () => { const rows = q ? q.orders : []; return (rows.find((r) => r.isLast) || rows[0] || {}).order; };
 
-  $('#pay-out', el).addEventListener('change', requote);
+  if (sitting) $('#pay-out', el).addEventListener('change', requote);
   on(el, 'change', 'input[name="together"]', async (e, b) => { together = b.checked; await loadOrders(); await requote(); });
   on(el, 'change', 'input[name="po"]', async (e, b) => { if (b.checked) picked.add(b.value); else picked.delete(b.value); await requote(); });
   $('#pay-transfer', el).addEventListener('input', change);

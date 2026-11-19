@@ -1,6 +1,6 @@
 import { t, eq, done } from './t.mjs';
 import { atMs } from '../docs/js/time.js';
-import { fmtMoney, promoActive, voucherError, priceOrder, minOrder, settle } from '../docs/js/money.js';
+import { fmtMoney, promoActive, voucherError, priceOrder, priceGroup, minOrder, settle } from '../docs/js/money.js';
 
 const at = (d, hhmm) => { const [h, m] = hhmm.split(':').map(Number); return atMs(d, h * 60 + m); };
 const GIO_VANG = { id: 'p1', name: 'Giờ vàng', active: true, kind: 'pct', value: 20, scope: ['Trà'], days: [1, 2, 3, 4, 5], fromMin: 840, toMin: 1020 };
@@ -72,4 +72,29 @@ await t('chia tiền: CK lớn hơn số phải trả', () => eq(settle(100000, 
 await t('chia tiền: chuyển khoản hết', () => eq(settle(95000, { transfer: 95000, cashGiven: 0 }), { error: null, change: 0, payments: [{ method: 'chuyen_khoan', amount: 95000 }] }));
 await t('chia tiền: phiếu 0đ', () => eq(settle(0, { transfer: 0, cashGiven: 0 }), { error: null, change: 0, payments: [] }));
 await t('chia tiền: số âm / lẻ bị chặn', () => eq([settle(1000, { transfer: -5, cashGiven: 2000 }).error, settle(1000, { transfer: 0, cashGiven: 1000.5 }).error], ['Số tiền chưa đúng', 'Số tiền chưa đúng']));
+// ===== Sửa sau duyệt: trả chung nhiều phiếu = MỘT hoá đơn, chỉ 1 khuyến mãi cho cả nhóm =====
+const A = { lines: [L({ qty: 2 })], extraHours: 1, extraPrice: 20000 };                 // 70.000 Trà
+const B = { lines: [L({ group: 'Cà phê', name: 'Bạc xỉu', price: 30000 })], extraHours: 1, extraPrice: 20000 }; // 30.000 Cà phê
+await t('nhóm: voucher số tiền 20.000 chỉ trừ một lần, chia theo tỉ lệ', () => {
+  const g = priceGroup([A, B], { promotions: [], voucher: V({ kind: 'amt', value: 20000 }), at: T15 });
+  eq([g.priced.map((p) => p.promo && p.promo.amount), g.priced.reduce((n, p) => n + p.total, 0), g.promo.source], [[14000, 6000], 120000, 'voucher']);
+});
+await t('nhóm: khuyến mãi Trà và voucher không cộng dồn giữa các box', () => {
+  const g = priceGroup([A, B], { promotions: [GIO_VANG], voucher: V({ kind: 'pct', value: 10 }), at: T15 });
+  // Giờ vàng: 20% × 70.000 = 14.000; voucher 10% × 100.000 = 10.000 → chọn Giờ vàng cho cả hoá đơn
+  eq([g.promo.source, g.priced.map((p) => (p.promo ? p.promo.source + ':' + p.promo.amount : null))], ['tu_dong', ['tu_dong:14000', null]]);
+});
+await t('nhóm: hoá đơn tối thiểu của voucher xét trên cả nhóm', () => {
+  const g = priceGroup([A, B], { promotions: [], voucher: V({ minTotal: 90000 }), at: T15 });
+  eq([g.voucherError, g.promo.amount], [null, 10000]);
+});
+await t('nhóm 1 phiếu = priceOrder', () => {
+  const opt = { promotions: [GIO_VANG], voucher: V({ kind: 'amt', value: 20000 }), at: T15 };
+  eq(priceGroup([{ ...ORDER, manual: { kind: 'pct', value: 10 } }], opt).priced[0], priceOrder({ ...ORDER, manual: { kind: 'pct', value: 10 } }, opt));
+});
+await t('nhóm: chia số lẻ — tổng phần chia đúng bằng tiền giảm', () => {
+  const g = priceGroup([{ lines: [L({ price: 10000 })] }, { lines: [L({ price: 10000 })] }, { lines: [L({ price: 10000 })] }], { promotions: [], voucher: V({ kind: 'amt', value: 10000 }), at: T15 });
+  eq(g.priced.reduce((n, p) => n + p.promo.amount, 0), 10000);
+});
+
 done();

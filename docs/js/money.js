@@ -67,13 +67,36 @@ export function priceOrder(order, opt = {}) {
       if (amount > 0) cands.push({ source: 'voucher', id: opt.voucher.code, name: 'Mã ' + opt.voucher.code, amount });
     }
   }
-  // Lấy cái giảm nhiều nhất; bằng nhau thì ưu tiên voucher (khách đã đưa mã)
-  const promo = cands.sort((a, b) => b.amount - a.amount || (a.source === 'voucher' ? -1 : 1))[0] || null;
+  // Lấy cái giảm nhiều nhất; bằng nhau thì ưu tiên voucher (khách đã đưa mã).
+  // opt.force = {promo} (từ priceGroup): dùng đúng khuyến mãi đã chọn cho cả hoá đơn, không vượt tiền món của phiếu này.
+  const promo = opt.force
+    ? (opt.force.promo ? { ...opt.force.promo, amount: Math.min(opt.force.promo.amount, monEligible) } : null)
+    : cands.sort((a, b) => b.amount - a.amount || (a.source === 'voucher' ? -1 : 1))[0] || null;
 
   const extraAmount = Math.max(0, Number(order.extraHours) || 0) * Math.max(0, Math.round(Number(order.extraPrice) || 0));
   const beforeManual = goods + extraAmount - (promo ? promo.amount : 0);
   const manualAmount = order.manual ? cut(order.manual.kind, order.manual.value, beforeManual) : 0;
   return { goods, comboTotal, monEligible, extraAmount, promo, voucherError: voucherErr, manualAmount, total: Math.max(0, beforeManual - manualAmount) };
+}
+
+// Nhiều phiếu thu cùng lúc = MỘT hoá đơn: chọn 1 khuyến mãi trên cả nhóm, rồi chia tiền giảm về từng phiếu theo tỉ lệ tiền món được giảm.
+export function priceGroup(orders, opt = {}) {
+  const merged = priceOrder({ lines: orders.flatMap((o) => o.lines || []) }, opt);
+  const P = merged.promo;
+  const baseOf = (o) => {
+    if (!P) return 0;
+    const pr = P.source === 'tu_dong' ? (opt.promotions || []).find((x) => x.id === P.id) : null;
+    return live(o.lines).filter((l) => l.kind !== 'combo' && (!pr || inScope(pr.scope, l.group))).reduce((s, l) => s + amountOf(l), 0);
+  };
+  const bases = orders.map(baseOf);
+  const totalBase = bases.reduce((a, b) => a + b, 0);
+  const share = bases.map((b) => (P && totalBase > 0 ? Math.floor((P.amount * b) / totalBase) : 0));
+  if (P && totalBase > 0) { const k = bases.indexOf(Math.max(...bases)); share[k] += P.amount - share.reduce((a, b) => a + b, 0); }
+  const priced = orders.map((o, i) => {
+    const p = priceOrder(o, { ...opt, force: { promo: P && share[i] > 0 ? { ...P, amount: share[i] } : null } });
+    return { ...p, voucherError: i === 0 ? merged.voucherError : null };
+  });
+  return { priced, promo: P, voucherError: merged.voucherError, total: priced.reduce((n, p) => n + p.total, 0) };
 }
 
 export function minOrder(lines, people, minPerPerson) {

@@ -256,12 +256,82 @@ await t('ordersRange: QL/Chủ xem; phiếu huỷ hôm sau vẫn lấy theo ngà
 });
 
 // ===== Bước 8: đổi số lượng dòng chưa gửi =====
-await t('setLineQty: dòng chưa gửi đổi được, đã gửi thì không', async () => {
+await t('bumpLine: dòng chưa gửi cộng được, đã gửi thì không', async () => {
   const s = await fresh(); const o = await phieu(s, await vao(s));
   const r = await goi(s, o.id, ['m_trdao']);
-  const a = await s.setLineQty(o.id, r.lines[0].id, 3);
+  const a = await s.bumpLine(o.id, r.lines[0].id, 2);
   await s.sendToBar(o.id);
-  eq([a.lines[0].qty, await msg(() => s.setLineQty(o.id, r.lines[0].id, 1)), await msg(() => s.setLineQty(o.id, r.lines[0].id, 0))], [3, 'Món đã gửi pha chế — huỷ món thay vì sửa', 'Món đã gửi pha chế — huỷ món thay vì sửa']);
+  eq([a.lines[0].qty, await msg(() => s.bumpLine(o.id, r.lines[0].id, 1))], [3, 'Món đã gửi pha chế — huỷ món thay vì sửa']);
+});
+
+// ===== Sửa sau duyệt cuối =====
+await t('I3: trả chung + voucher số tiền → trừ 1 lần cho cả hoá đơn, voucher +1 lượt', async () => {
+  const s = await fresh('u_chu', 480);
+  await s.saveVoucher({ code: 'GIAM20', active: true, kind: 'amt', value: 20000, maxUses: 0, minTotal: 0 });
+  const k = await s.createBooking({ name: 'Nhóm', phone: '0911222444', date: D, startMin: 510, durMin: 180, people: 4, boxIds: ['b1', 'b2'], channel: 'tiktok', note: '' });
+  clock.set(atMs(D, 510)); for (const v of k.visits) await s.checkIn(v.id);
+  const [o1, o2] = [await phieu(s, k.visits[0].id), await phieu(s, k.visits[1].id)];
+  await goi(s, o1.id, ['m_trdao', 2]); await goi(s, o2.id, ['m_cfs', 1]);
+  await s.setVoucher(o1.id, 'GIAM20');
+  clock.set(atMs(D, 510 + 60));
+  const q = await s.quote([o1.id, o2.id]);
+  const r = await s.pay([o1.id, o2.id], { transfer: q.total, cashGiven: 0 });
+  eq([q.total, q.orders.map((x) => x.priced.promo && x.priced.promo.amount), r.receipt.priced.promos.map((p) => p.source), (await s.listVouchers()).find((v) => v.code === 'GIAM20').used],
+    [99000 - 20000, [14142, 5858], ['voucher', 'voucher'], 1]);
+});
+await t('I4: bấm thêm món đã có (chưa gửi) → gộp vào dòng; bumpLine cộng/trừ, về 0 thì xoá', async () => {
+  const s = await fresh(); const vid = await vao(s); const o = await phieu(s, vid);
+  await Promise.all([goi(s, o.id, ['m_trdao']), goi(s, o.id, ['m_trdao']), goi(s, o.id, ['m_trdao'])]);
+  let x = await phieu(s, vid);
+  const lid = x.lines[0].id;
+  await Promise.all([s.bumpLine(o.id, lid, 1), s.bumpLine(o.id, lid, 1)]);
+  x = await phieu(s, x.visitId);
+  const qty5 = x.lines[0].qty;
+  await s.bumpLine(o.id, lid, -5);
+  eq([x.lines.length, qty5, (await phieu(s, x.visitId)).lines.length], [1, 5, 0]);
+});
+await t('I4: món đã gửi không gộp — thêm dòng mới; bumpLine dòng đã gửi bị chặn', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s));
+  const r = await goi(s, o.id, ['m_trdao']); await s.sendToBar(o.id);
+  const x = await goi(s, o.id, ['m_trdao']);
+  eq([x.lines.length, await msg(() => s.bumpLine(o.id, r.lines[0].id, 1))], [2, 'Món đã gửi pha chế — huỷ món thay vì sửa']);
+});
+await t('I2: huỷ & thu lại → phiếu mới chép món, thu được dù lượt đã về, giờ thêm giữ như cũ', async () => {
+  const s = await fresh('u_a', 480); const vid = await vao(s); const o = await phieu(s, vid);
+  await goi(s, o.id, ['m_trdao'], ['m_coca']);
+  clock.set(atMs(D, 480 + 241));
+  await s.pay([o.id], { transfer: 0, cashGiven: 100000 });            // 95.000 (55.000 + 2 giờ)
+  clock.advance(10);
+  const x = await s.voidOrder(o.id, { pin: '2222', reason: 'nhập nhầm tiền mặt', reopen: true });
+  const open = (await s.ordersOfVisit(vid)).filter((y) => y.status === 'mo');
+  const q = await s.quote([open[0].id]);
+  await s.pay([open[0].id], { transfer: q.total, cashGiven: 0 });
+  await as(s, 'u_chu');
+  const mv = (await s.movesList(D, D)).filter((m) => m.name === 'Coca').map((m) => m.kind);
+  eq([x.status, open.length, open[0].lines.map((l) => l.name), q.total, (await visitOf(s, vid)).status, mv], ['huy', 1, ['Trà đào', 'Coca'], 95000, 've', ['ban', 'hoan', 'ban']]);
+});
+await t('I2: huỷ thường (không thu lại) không tạo phiếu mới', async () => {
+  const s = await fresh(); const vid = await vao(s); const o = await phieu(s, vid); await goi(s, o.id, ['m_coca']);
+  await s.pay([o.id], { transfer: 20000, cashGiven: 0 });
+  await s.voidOrder(o.id, { pin: '2222', reason: 'khách không lấy' });
+  eq((await s.ordersOfVisit(vid)).filter((y) => y.status === 'mo').length, 0);
+});
+await t('M5: in lại dùng giá ngồi thêm lúc thu, không phải giá mới', async () => {
+  const s = await fresh('u_chu', 480); const o = await phieu(s, await vao(s)); await goi(s, o.id, ['m_coca']);
+  clock.set(atMs(D, 480 + 241)); await s.pay([o.id], { transfer: 60000, cashGiven: 0 });
+  await s.saveSettings({ extraPrice: 25000 });
+  const r = await s.receiptOf(o.id);
+  eq([r.priced.extraPrice, r.priced.extraAmount], [20000, 40000]);
+});
+await t('C1: billsOfDay — mọi vai trò xem hoá đơn trong ngày (cả hoá đơn đã huỷ)', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s)); await goi(s, o.id, ['m_coca']);
+  await s.pay([o.id], { transfer: 20000, cashGiven: 0 });
+  const o2 = await phieu(s, await vao(s, 'b2')); await goi(s, o2.id, ['m_hd']);
+  await s.pay([o2.id], { transfer: 0, cashGiven: 50000 });
+  await s.voidOrder(o2.id, { pin: '1111', reason: 'thử' });
+  const b = await s.billsOfDay(D);
+  eq(b.map((x) => [x.boxNames.join(), x.total, x.status, x.payments.map((p) => p.method).join()]), [['Box 2', 25000, 'huy', 'tien_mat'], ['Box 1', 20000, 'da_thu', 'chuyen_khoan']]);
+  eq([b[0].voidedBy, b[0].voidReason, b[1].paidBy], ['Chủ (thử)', 'thử', 'Nhân viên A (thử)']);
 });
 
 done();

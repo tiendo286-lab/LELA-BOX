@@ -21,3 +21,5 @@ flow_kho nv
 flow_kho ql
 flow_kho nv phone
 flow_khach_bc ql
+flow_hoa_don nv
+flow_hoa_don nv phone

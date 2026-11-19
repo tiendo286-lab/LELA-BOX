@@ -57,10 +57,8 @@ export async function openOrder(ctx, visit, boxName, after, onPay) {
 
   async function addItem(m) {
     if (m.kind === 'combo') { const picks = await pickCombo(m, menu); if (picks) await run(() => store.addLines(order.id, [{ menuItemId: m.id, qty: 1, note: takeNote(), picks }])); return; }
-    const note = takeNote();
-    const same = order.lines.find((l) => l.menuItemId === m.id && !l.sentAt && !l.voided && (l.note || '') === note);
-    if (same) await run(() => store.setLineQty(order.id, same.id, same.qty + 1));
-    else await run(() => store.addLines(order.id, [{ menuItemId: m.id, qty: 1, note }]));
+    // Máy chủ tự gộp vào dòng chưa gửi cùng món + ghi chú (bấm nhanh nhiều lần không mất số)
+    await run(() => store.addLines(order.id, [{ menuItemId: m.id, qty: 1, note: takeNote() }]));
   }
   function takeNote() { const n = $('#o-note', el); const v = n.value.trim(); n.value = ''; return v; }
 
@@ -75,9 +73,7 @@ export async function openOrder(ctx, visit, boxName, after, onPay) {
   on(el, 'click', '.menu-btn', async (e, b) => { const m = menu.find((x) => x.id === b.dataset.item); if (m) await addItem(m); });
   on(el, 'click', '[data-act="plus"], [data-act="minus"]', async (e, b) => {
     const l = order.lines.find((x) => x.id === b.closest('.oline').dataset.line);
-    const q = l.qty + (b.dataset.act === 'plus' ? 1 : -1);
-    if (q < 1) await run(() => store.removeLine(order.id, l.id));
-    else await run(() => store.setLineQty(order.id, l.id, q));
+    await run(() => store.bumpLine(order.id, l.id, b.dataset.act === 'plus' ? 1 : -1));
   });
   on(el, 'click', '[data-act="del-line"]', async (e, b) => {
     const l = order.lines.find((x) => x.id === b.closest('.oline').dataset.line);

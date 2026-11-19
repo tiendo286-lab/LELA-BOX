@@ -273,7 +273,9 @@ language sql immutable as $$
 $$;
 
 -- Tính tiền một phiếu (giống priceOrder ở docs/js/money.js). Chỉ 1 khuyến mãi: tự động hoặc voucher, lấy cái giảm nhiều hơn (bằng nhau → voucher).
-create or replace function public.app__price(p_lines jsonb, p_extra_hours int, p_extra_price int, p_manual jsonb, p_voucher text, p_at timestamptz) returns jsonb
+-- p_force (từ app__quote khi thu chung): dùng đúng khuyến mãi đã chọn cho cả hoá đơn ('null'::jsonb = không khuyến mãi); SQL NULL = tự chọn như thường.
+drop function if exists public.app__price(jsonb, int, int, jsonb, text, timestamptz);
+create or replace function public.app__price(p_lines jsonb, p_extra_hours int, p_extra_price int, p_manual jsonb, p_voucher text, p_at timestamptz, p_force jsonb default null) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare
   goods bigint := app__goods(p_lines);
@@ -302,6 +304,9 @@ begin
         best := jsonb_build_object('source', 'voucher', 'id', v.code, 'name', 'Mã ' || v.code, 'amount', amt);
       end if;
     end if;
+  end if;
+  if p_force is not null then
+    best := case when jsonb_typeof(p_force) = 'object' then p_force || jsonb_build_object('amount', least((p_force ->> 'amount')::bigint, mon)) else null end;
   end if;
   before := goods + extra - coalesce((best ->> 'amount')::bigint, 0);
   if p_manual is not null and jsonb_typeof(p_manual) = 'object' then manual := app__cut(p_manual ->> 'kind', (p_manual ->> 'value')::numeric, before); end if;
@@ -523,10 +528,11 @@ create or replace function public.app_order_add(p_id text, p_items jsonb) return
 language plpgsql security definer set search_path = public as $$
 declare
   u staff := app__need(); o orders; it jsonb; m menu_items; q int; picks jsonb; slot jsonb; i int; k int;
-  rest jsonb; pk jsonb; pm menu_items; found boolean; total int; add jsonb := '[]'::jsonb;
+  rest jsonb; pk jsonb; pm menu_items; found boolean; total int; cur jsonb; nl jsonb; mi int;
 begin
   perform pg_advisory_xact_lock(4242);
   o := app__order_open(p_id);
+  cur := o.lines;
   for it in select * from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) loop
     select * into m from menu_items where id = it ->> 'menuItemId' and active;
     if m.id is null then raise exception 'LOI: Món không còn bán'; end if;
@@ -553,17 +559,28 @@ begin
         end loop;
       end loop;
     end if;
-    add := add || jsonb_build_array(jsonb_build_object('id', gen_random_uuid()::text, 'menuItemId', m.id, 'kind', m.kind, 'group', m.grp, 'name', m.name,
+    nl := jsonb_build_object('id', gen_random_uuid()::text, 'menuItemId', m.id, 'kind', m.kind, 'group', m.grp, 'name', m.name,
       'price', m.price, 'qty', q, 'note', coalesce(trim(it ->> 'note'), ''), 'picks', picks, 'sentAt', null, 'voided', null, 'addedBy', u.name, 'at', app__ms(now()))
-      || case when m.kind = 'combo' then jsonb_build_object('serves', coalesce(m.serves, 1)) else '{}'::jsonb end);
+      || case when m.kind = 'combo' then jsonb_build_object('serves', coalesce(m.serves, 1)) else '{}'::jsonb end;
+    -- Món thường chưa gửi, cùng món + cùng ghi chú → cộng vào dòng sẵn có
+    mi := null;
+    if m.kind <> 'combo' then
+      select (e.n - 1)::int into mi from jsonb_array_elements(cur) with ordinality e(x, n)
+      where e.x ->> 'menuItemId' = m.id and e.x ->> 'kind' <> 'combo' and coalesce(e.x ->> 'note', '') = nl ->> 'note'
+        and jsonb_typeof(e.x -> 'sentAt') is distinct from 'number' and jsonb_typeof(e.x -> 'voided') is distinct from 'object'
+      order by e.n limit 1;
+    end if;
+    if mi is not null then cur := jsonb_set(cur, array[mi::text, 'qty'], to_jsonb((cur -> mi ->> 'qty')::int + q));
+    else cur := cur || jsonb_build_array(nl); end if;
   end loop;
-  update orders set lines = lines || add where id = o.id returning * into o;
+  update orders set lines = cur where id = o.id returning * into o;
   return app__order_json(o);
 end $$;
 
-create or replace function public.app_order_line_qty(p_id text, p_line text, p_qty int) returns jsonb
+-- Cộng / trừ số lượng dòng chưa gửi (nhận số thay đổi để bấm nhanh không mất số); về 0 thì xoá dòng
+create or replace function public.app_order_line_bump(p_id text, p_line text, p_delta int) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare o orders; idx int; l jsonb;
+declare o orders; idx int; l jsonb; q int;
 begin
   perform app__need();
   perform pg_advisory_xact_lock(4242);
@@ -571,8 +588,9 @@ begin
   select (e.n - 1)::int, e.x into idx, l from jsonb_array_elements(o.lines) with ordinality e(x, n) where e.x ->> 'id' = p_line;
   if l is null then raise exception 'LOI: Không tìm thấy món'; end if;
   if jsonb_typeof(l -> 'sentAt') = 'number' or jsonb_typeof(l -> 'voided') = 'object' then raise exception 'LOI: Món đã gửi pha chế — huỷ món thay vì sửa'; end if;
-  if coalesce(p_qty, 0) < 1 then raise exception 'LOI: Số lượng phải từ 1'; end if;
-  update orders set lines = jsonb_set(lines, array[idx::text, 'qty'], to_jsonb(p_qty)) where id = o.id returning * into o;
+  q := (l ->> 'qty')::int + coalesce(p_delta, 0);
+  if q < 1 then update orders set lines = lines - idx where id = o.id returning * into o;
+  else update orders set lines = jsonb_set(lines, array[idx::text, 'qty'], to_jsonb(q)) where id = o.id returning * into o; end if;
   return app__order_json(o);
 end $$;
 
@@ -675,6 +693,8 @@ language plpgsql security definer set search_path = public as $$
 declare
   s settings; ids text[]; o orders; v visits; t_out timestamptz; rows jsonb := '[]'::jsonb; total bigint := 0;
   is_last boolean; mins int; eh int; pr jsonb; warns text[] := '{}'; have int; vids text[]; oid_ text;
+  ehs int[] := '{}'; minss int[] := '{}'; lasts boolean[] := '{}'; bases bigint[] := '{}'; shares bigint[] := '{}';
+  all_lines jsonb := '[]'::jsonb; code text; mp jsonb; gp jsonb; promo_row promotions; tb bigint; k int; i int;
 begin
   select * into s from settings where id = 1;
   select array_agg(x order by n) into ids from (select x, min(n) n from jsonb_array_elements_text(coalesce(p_ids, '[]'::jsonb)) with ordinality e(x, n) group by x) d;
@@ -690,16 +710,44 @@ begin
     end loop;
   end if;
   if t_out > now() + interval '1 minute' then raise exception 'LOI: Giờ ra chưa tới'; end if;
+  -- Lượt 1: giờ ngồi thêm từng phiếu (phiếu cuối của lượt mang giờ thêm) + gom món cả nhóm
   for o in select * from orders where id = any (ids) order by array_position(ids, id) loop
     select * into v from visits where id = o.visit_id;
-    -- phiếu cuối: mọi phiếu mở của lượt đều nằm trong lần thu này, và đây là phiếu cuối cùng của lượt trong danh sách
     is_last := not exists (select 1 from orders x where x.visit_id = v.id and x.status = 'mo' and not (x.id = any (ids)))
       and o.id = (select x.id from orders x where x.id = any (ids) and x.visit_id = v.id order by array_position(ids, x.id) desc limit 1);
     mins := case when v.status = 'ngoi' then floor(extract(epoch from (t_out - v.in_at)) / 60)::int else coalesce(v.minutes, 0) end;
     eh := case when not is_last then 0 when v.status = 'ngoi' then app__extra(mins) else coalesce(v.extra, 0) end;
-    pr := app__price(o.lines, eh, s.extra_price, o.manual, o.voucher_code, t_out);
+    ehs := ehs || eh; minss := minss || mins; lasts := lasts || is_last;
+    all_lines := all_lines || o.lines;
+    if code is null and o.voucher_code is not null then code := o.voucher_code; end if;
+  end loop;
+  -- Thu chung = MỘT hoá đơn: chọn 1 khuyến mãi trên cả nhóm rồi chia tiền giảm theo tỉ lệ tiền món được giảm
+  mp := app__price(all_lines, 0, 0, null, code, t_out);
+  gp := case when jsonb_typeof(mp -> 'promo') = 'object' then mp -> 'promo' end;
+  if gp is not null and gp ->> 'source' = 'tu_dong' then select * into promo_row from promotions where id = gp ->> 'id'; end if;
+  for o in select * from orders where id = any (ids) order by array_position(ids, id) loop
+    select coalesce(sum((l ->> 'price')::bigint * (l ->> 'qty')::bigint), 0) into tb from app__live_lines(o.lines) l
+      where gp is not null and l ->> 'kind' <> 'combo'
+        and (gp ->> 'source' = 'voucher' or promo_row.scope = '"all"'::jsonb or jsonb_typeof(promo_row.scope) <> 'array' or promo_row.scope ? (l ->> 'group'));
+    bases := bases || tb;
+  end loop;
+  tb := coalesce((select sum(b) from unnest(bases) b), 0);
+  for i in 1 .. array_length(bases, 1) loop
+    shares := shares || case when gp is not null and tb > 0 then floor((gp ->> 'amount')::bigint * bases[i] / tb::numeric)::bigint else 0 end;
+  end loop;
+  if gp is not null and tb > 0 then
+    k := array_position(bases, (select max(b) from unnest(bases) b));
+    shares[k] := shares[k] + (gp ->> 'amount')::bigint - (select sum(x) from unnest(shares) x);
+  end if;
+  -- Lượt 2: tính tiền từng phiếu với phần khuyến mãi đã chia
+  i := 0;
+  for o in select * from orders where id = any (ids) order by array_position(ids, id) loop
+    i := i + 1;
+    pr := app__price(o.lines, ehs[i], s.extra_price, o.manual, o.voucher_code, t_out,
+                     case when gp is not null and shares[i] > 0 then gp || jsonb_build_object('amount', shares[i]) else 'null'::jsonb end)
+          || jsonb_build_object('voucherError', case when i = 1 then mp -> 'voucherError' else 'null'::jsonb end);
     total := total + (pr ->> 'total')::bigint;
-    rows := rows || jsonb_build_array(jsonb_build_object('order', app__order_json(o), 'priced', pr, 'isLast', is_last, 'extraHours', eh, 'minutes', mins));
+    rows := rows || jsonb_build_array(jsonb_build_object('order', app__order_json(o), 'priced', pr, 'isLast', lasts[i], 'extraHours', ehs[i], 'minutes', minss[i]));
   end loop;
   for v in select * from visits where id = any (vids) order by array_position(vids, id) loop
     select coalesce(sum(case when l ->> 'kind' = 'combo' then coalesce((l ->> 'serves')::int, 1) * (l ->> 'qty')::int else (l ->> 'qty')::int end), 0)::int into have
@@ -708,7 +756,7 @@ begin
       warns := warns || ((select name from boxes where id = v.box_id) || ': ' || v.people || ' người mới gọi ' || have || ' món');
     end if;
   end loop;
-  return jsonb_build_object('rows', rows, 'total', total, 'outAt', app__ms(t_out), 'visitIds', to_jsonb(vids),
+  return jsonb_build_object('rows', rows, 'total', total, 'outAt', app__ms(t_out), 'visitIds', to_jsonb(vids), 'groupPromo', gp,
     'minWarn', nullif(array_to_string(warns, '; '), ''),
     'boxNames', (select jsonb_agg(distinct b.name) from visits x join boxes b on b.id = x.box_id where x.id = any (vids)));
 end $$;
@@ -725,11 +773,13 @@ end $$;
 -- Hoá đơn (phiếu đầu nhóm giữ khoản trả)
 create or replace function public.app__receipt(p_id text, p_reprint boolean) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
-declare s settings; rid text; r orders; vids text[];
+declare s settings; rid text; r orders; vids text[]; xp int;
 begin
   select * into s from settings where id = 1;
   select coalesce(paid_with, id) into rid from orders where id = p_id;
   select * into r from orders where id = rid;
+  -- giá ngồi thêm đã chốt lúc thu (không lấy giá mới trong cài đặt)
+  xp := coalesce((select extra_price from orders where (id = rid or paid_with = rid) and extra_hours > 0 limit 1), r.extra_price, s.extra_price);
   select array_agg(distinct visit_id) into vids from orders where id = rid or paid_with = rid;
   return jsonb_build_object(
     'shopName', s.shop_name, 'footer', s.bill_footer,
@@ -739,7 +789,7 @@ begin
     'minutes', (select case when count(*) = 1 then max(minutes) end from visits where id = any (vids)),
     'lines', coalesce((select jsonb_agg(l order by o.opened_at, o.id) from orders o, app__live_lines(o.lines) l where o.id = rid or o.paid_with = rid), '[]'::jsonb),
     'priced', (select jsonb_build_object('goods', sum((priced ->> 'goods')::bigint), 'extraAmount', sum((priced ->> 'extraAmount')::bigint), 'extraHours', sum(extra_hours),
-                 'extraPrice', s.extra_price, 'promos', coalesce(jsonb_agg(priced -> 'promo') filter (where jsonb_typeof(priced -> 'promo') = 'object'), '[]'::jsonb),
+                 'extraPrice', xp, 'promos', coalesce(jsonb_agg(priced -> 'promo') filter (where jsonb_typeof(priced -> 'promo') = 'object'), '[]'::jsonb),
                  'manualAmount', sum((priced ->> 'manualAmount')::bigint), 'total', sum((priced ->> 'total')::bigint))
                from orders where id = rid or paid_with = rid),
     'payments', r.payments, 'change', r.change, 'paidBy', r.paid_by, 'at', app__ms(r.paid_at), 'reprint', p_reprint, 'voided', r.status = 'huy');
@@ -773,7 +823,6 @@ begin
       change = case when rid is null then chg else 0 end, paid_with = rid
     where id = r -> 'order' ->> 'id' returning * into o;
     if rid is null then rid := o.id; end if;
-    if r -> 'priced' -> 'promo' ->> 'source' = 'voucher' then update vouchers set used = used + 1 where code = o.voucher_code; end if;
     insert into stock_moves (stock_item_id, kind, qty, by_name, order_id)
     select k.id, 'ban', sum(d.q)::int, u.name, o.id
     from (select case when l ->> 'kind' = 'combo' then p2 ->> 'menuItemId' else l ->> 'menuItemId' end mid, (l ->> 'qty')::int q
@@ -783,6 +832,7 @@ begin
     where d.mid is not null
     group by k.id;
   end loop;
+  if q -> 'groupPromo' ->> 'source' = 'voucher' then update vouchers set used = used + 1 where code = q -> 'groupPromo' ->> 'id'; end if;
   for vid in select jsonb_array_elements_text(q -> 'visitIds') loop
     if not exists (select 1 from orders where visit_id = vid and status = 'mo') then
       perform app__checkout_visit(vid, case when out_ms is null then null else to_timestamp(out_ms / 1000.0) end);
@@ -806,11 +856,31 @@ begin
   if a ? 'error' then return jsonb_build_object('__error', a ->> 'error'); end if;
   update orders set status = 'huy', voided_by = a ->> 'by', voided_at = now(), void_reason = trim(coalesce(p_auth ->> 'reason', ''))
   where (id = rid or paid_with = rid) and status = 'da_thu';
+  -- Huỷ & thu lại: mở phiếu mới chép các món (giữ trạng thái đã gửi pha chế); thu lại được dù lượt đã về
+  if coalesce((p_auth ->> 'reopen')::boolean, false) then
+    insert into orders (visit_id, box_id, lines, voucher_code, opened_by, split_from)
+    select x.visit_id, x.box_id,
+      coalesce((select jsonb_agg(l || jsonb_build_object('id', gen_random_uuid()::text)) from app__live_lines(x.lines) l), '[]'::jsonb),
+      x.voucher_code, coalesce((app__me()).name, ''), x.id
+    from orders x where x.id = rid or x.paid_with = rid;
+  end if;
   insert into stock_moves (stock_item_id, kind, qty, by_name, order_id)
   select m.stock_item_id, 'hoan', m.qty, a ->> 'by', m.order_id from stock_moves m
   where m.kind = 'ban' and m.order_id in (select id from orders where id = rid or paid_with = rid);
   select * into o from orders where id = p_id;
   return app__order_json(o);
+end $$;
+
+create or replace function public.app_bills_of_day(p_date date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  perform app__need();
+  return coalesce((select jsonb_agg(jsonb_build_object('orderId', r.id, 'at', app__ms(r.paid_at),
+      'boxNames', (select jsonb_agg(distinct b.name) from orders x join visits v on v.id = x.visit_id join boxes b on b.id = v.box_id where x.id = r.id or x.paid_with = r.id),
+      'total', (select coalesce(sum((x.priced ->> 'total')::bigint), 0) from orders x where x.id = r.id or x.paid_with = r.id),
+      'payments', r.payments, 'change', r.change, 'status', r.status, 'paidBy', r.paid_by, 'voidedBy', r.voided_by, 'voidedAt', app__ms(r.voided_at), 'voidReason', r.void_reason)
+      order by r.paid_at desc, r.opened_at desc)
+    from orders r where r.paid_with is null and r.status in ('da_thu', 'huy') and app__vn_date(r.paid_at) = p_date), '[]'::jsonb);
 end $$;
 
 create or replace function public.app_order_receipt(p_id text) returns jsonb

@@ -196,3 +196,9 @@ h3 { font-size: 15px; margin: 14px 0 6px; }
 .stock-item-row { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .neg { color: var(--over-ink); font-weight: 700; }
 .count-hist + .count-hist { margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--line); }
+
+/* Hoá đơn */
+.bill-row .bill-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.bill-row.voided { opacity: .75; }
+.bill-row.voided .bill-top b, .bill-row.voided .bill-top .big { text-decoration: line-through; }
+.bill-row .actions { margin-top: 8px; }
