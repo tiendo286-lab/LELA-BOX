@@ -32,7 +32,8 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
   let volatile = false;
   let st = null;
   try {
-    if (/[?&]reset=1/.test(globalThis.location?.search || '')) storage.removeItem(KEY);
+    // ?reset=1 chỉ xoá dữ liệu một lần mỗi lần mở trang
+    if (!globalThis.__lelaReset && /[?&]reset=1/.test(globalThis.location?.search || '')) { globalThis.__lelaReset = true; storage.removeItem(KEY); }
     const raw = storage.getItem(KEY);
     if (raw) st = JSON.parse(raw);
   } catch { volatile = true; }
