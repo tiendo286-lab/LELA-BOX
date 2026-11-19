@@ -38,6 +38,11 @@ export function createSupabaseStore({ supabaseUrl, anonKey }) {
       const x = m.match(/^(TRUNG|LOI|QUYEN):\s*(.*)$/s);
       throw new StoreError(x ? x[1] : 'LOI', x ? x[2] : m);
     }
+    // Lỗi "mềm": máy chủ không ném lỗi (để giữ bộ đếm PIN sai) mà trả {__error: 'QUYEN: …'}
+    if (j && typeof j === 'object' && !Array.isArray(j) && typeof j.__error === 'string') {
+      const x = j.__error.match(/^(TRUNG|LOI|QUYEN):\s*(.*)$/s);
+      throw new StoreError(x ? x[1] : 'LOI', x ? x[2] : j.__error);
+    }
     return j;
   }
 

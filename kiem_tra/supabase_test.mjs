@@ -14,4 +14,16 @@ await t('chưa đăng nhập → gọi hàm báo QUYEN', async () => {
   try { await createSupabaseStore({ supabaseUrl: 'https://x.supabase.co', anonKey: 'k' }).snapshot('2026-11-19'); eq('không lỗi', 'QUYEN'); }
   catch (e) { eq(e.code, 'QUYEN'); }
 });
+// Máy chủ trả {__error} (không ném lỗi) khi PIN sai để bộ đếm sai PIN không bị hoàn tác → web phải coi là lỗi
+await t('kết quả {__error: "QUYEN: …"} → báo lỗi QUYEN', async () => {
+  const store = createSupabaseStore({ supabaseUrl: 'https://x.supabase.co', anonKey: 'k' });
+  const realLS = globalThis.localStorage;
+  globalThis.localStorage = { getItem: () => JSON.stringify({ access_token: 't', refresh_token: 'r', expires_at: Date.now() + 3600000 }), setItem() {}, removeItem() {} };
+  const s2 = createSupabaseStore({ supabaseUrl: 'https://x.supabase.co', anonKey: 'k' });
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ __error: 'QUYEN: PIN không đúng' }) });
+  try { await s2.removeLine('o1', 'l1', { pin: '1', reason: 'x' }); eq('không lỗi', 'QUYEN'); }
+  catch (e) { eq([e.code, e.message], ['QUYEN', 'PIN không đúng']); }
+  globalThis.localStorage = realLS; void store;
+});
+
 done();
