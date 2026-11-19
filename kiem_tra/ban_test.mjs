@@ -215,4 +215,34 @@ await t('in lại hoá đơn', async () => {
   eq([r.reprint, r.priced.total, r.boxNames], [true, 20000, ['Box 1']]);
 });
 
+// ===== Bước 5: kho =====
+await t('kho: nhập → bán → kiểm kê mù, QL xem chênh lệch', async () => {
+  const s = await fresh();
+  await s.receiveStock({ items: [{ stockItemId: 'k_coca', qty: 24 }], note: 'hàng về' });
+  const o = await phieu(s, await vao(s)); await goi(s, o.id, ['m_coca', 2]);
+  await s.pay([o.id], { transfer: 40000, cashGiven: 0 });
+  clock.advance(1);
+  const nvXem = await code(() => s.stockOverview());
+  const r = await s.saveCount({ items: [{ stockItemId: 'k_coca', counted: 21 }], note: '' });
+  await as(s, 'u_ql');
+  const ov = (await s.stockOverview()).find((x) => x.item.id === 'k_coca');
+  const c = (await s.countsList(D, D))[0];
+  eq([nvXem, 'expected' in r, 'diff' in r, c.items[0].expected, c.items[0].counted, c.items[0].diff, ov.expected], ['QUYEN', false, false, 22, 21, -1, 21]);
+});
+await t('kho: nhập số lượng 0 → lỗi; hàng không có', async () => {
+  const s = await fresh();
+  eq([await msg(() => s.receiveStock({ items: [{ stockItemId: 'k_coca', qty: 0 }] })), await msg(() => s.receiveStock({ items: [{ stockItemId: 'k_xx', qty: 1 }] }))], ['Số lượng phải lớn hơn 0', 'Không tìm thấy hàng']);
+});
+await t('kho: nhân viên xem danh sách hàng nhưng không có số lượng; không sửa hàng', async () => {
+  const s = await fresh();
+  const l = await s.listStock();
+  eq([l.length >= 4, l.some((x) => 'expected' in x || 'qty' in x), await code(() => s.saveStockItem({ name: 'Đá', unit: 'bao' }))], [true, false, 'QUYEN']);
+});
+await t('kho: QL thêm hàng; thiếu tên → lỗi', async () => {
+  const s = await fresh('u_ql');
+  const l = await s.saveStockItem({ name: 'Đá viên', unit: 'bao', menuItemId: null });
+  eq([l.some((x) => x.name === 'Đá viên'), await msg(() => s.saveStockItem({ name: ' ', unit: 'bao' }))], [true, 'Nhập tên hàng']);
+});
+await t('kho: kiểm kê không có dòng nào → lỗi', async () => { const s = await fresh(); eq(await msg(() => s.saveCount({ items: [] })), 'Nhập số đếm ít nhất 1 hàng'); });
+
 done();

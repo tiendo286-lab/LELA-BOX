@@ -1,6 +1,6 @@
 // Phần BÁN HÀNG + KHO của bản chạy thử (gắn vào createLocalStore). Cùng tên hàm với store/supabase.js.
 import { priceOrder, settle, minOrder, voucherError } from '../money.js';
-import { deductions } from '../stock.js';
+import { deductions, expectedQty } from '../stock.js';
 import { extraHours } from '../rules.js';
 import { fromMs } from '../time.js';
 const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim();
@@ -294,6 +294,60 @@ export function addSales(api, h) {
       const st = S();
       return copy(st.stockMoves.filter((m) => { const d = fromMs(m.at).date; return d >= from && d <= to; })
         .map((m) => ({ at: m.at, kind: m.kind, name: (st.stockItems.find((k) => k.id === m.stockItemId) || { name: '?' }).name, qty: m.qty, by: m.by, note: m.note })));
+    },
+
+    async listStock() { needMe(); return copy(S().stockItems.filter((k) => k.active !== false).map(({ id: i, name, unit, menuItemId, active }) => ({ id: i, name, unit, menuItemId, active }))); },
+    async saveStockItem(it) {
+      needRole('chu', 'ql');
+      const st = S();
+      const name = str(it.name);
+      if (!name) err('LOI', 'Nhập tên hàng');
+      const v = { name, unit: str(it.unit) || 'cái', menuItemId: it.menuItemId || null, active: it.active !== false };
+      const cur = it.id && st.stockItems.find((k) => k.id === it.id);
+      if (cur) Object.assign(cur, v); else st.stockItems.push({ id: id(), ...v });
+      save(); return copy(st.stockItems);
+    },
+    async receiveStock({ items, note = '' } = {}) {
+      needMe();
+      const st = S();
+      const list = (items || []).filter((x) => x && x.stockItemId);
+      if (!list.length) err('LOI', 'Nhập số lượng ít nhất 1 hàng');
+      for (const x of list) {
+        if (!st.stockItems.some((k) => k.id === x.stockItemId)) err('LOI', 'Không tìm thấy hàng');
+        if (!Number.isInteger(Number(x.qty)) || Number(x.qty) <= 0) err('LOI', 'Số lượng phải lớn hơn 0');
+      }
+      for (const x of list) pushMove({ stockItemId: x.stockItemId, kind: 'nhap', qty: Number(x.qty), note: str(note) });
+      save(); return true;
+    },
+    async stockOverview() {
+      needRole('chu', 'ql');
+      const st = S();
+      return copy(st.stockItems.filter((k) => k.active !== false).map((k) => {
+        const last = st.stockCounts.filter((c) => c.items.some((i) => i.stockItemId === k.id)).sort((a, b) => b.at - a.at)[0];
+        return { item: k, expected: expectedQty(k.id, st.stockMoves, st.stockCounts), lastCount: last ? { at: last.at, counted: last.items.find((i) => i.stockItemId === k.id).counted } : null };
+      }));
+    },
+    async saveCount({ items, note = '' } = {}) {
+      const u = needMe(), st = S();
+      const list = (items || []).filter((x) => x && x.stockItemId && x.counted !== '' && x.counted != null);
+      if (!list.length) err('LOI', 'Nhập số đếm ít nhất 1 hàng');
+      for (const x of list) {
+        if (!st.stockItems.some((k) => k.id === x.stockItemId)) err('LOI', 'Không tìm thấy hàng');
+        if (!Number.isInteger(Number(x.counted)) || Number(x.counted) < 0) err('LOI', 'Số đếm phải là số nguyên từ 0');
+      }
+      const c = { id: id(), at: nowMs(), by: u.name, note: str(note), items: list.map((x) => {
+        const expected = expectedQty(x.stockItemId, st.stockMoves, st.stockCounts);
+        return { stockItemId: x.stockItemId, expected, counted: Number(x.counted), diff: Number(x.counted) - expected };
+      }) };
+      st.stockCounts.push(c); save();
+      return { id: c.id, at: c.at };   // nhân viên không thấy số đáng lẽ còn / chênh lệch
+    },
+    async countsList(from, to) {
+      needRole('chu', 'ql');
+      const st = S();
+      const name = (k) => (st.stockItems.find((x) => x.id === k) || { name: '?' }).name;
+      return copy(st.stockCounts.filter((c) => { const d = fromMs(c.at).date; return d >= from && d <= to; }).sort((a, b) => b.at - a.at)
+        .map((c) => ({ id: c.id, at: c.at, by: c.by, note: c.note, items: c.items.map((i) => ({ ...i, name: name(i.stockItemId) })) })));
     },
 
     async setPin(pin) {

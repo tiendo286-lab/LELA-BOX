@@ -90,6 +90,12 @@ export function createSupabaseStore({ supabaseUrl, anonKey }) {
     voidOrder: (id, auth) => rpc('app_order_void', { p_id: id, p_auth: auth }),
     receiptOf: (id) => rpc('app_order_receipt', { p_id: id }),
     movesList: (from, to) => rpc('app_stock_moves', { p_from: from, p_to: to }),
+    listStock: () => rpc('app_stock_list'),
+    saveStockItem: (it) => rpc('app_stock_save', { p: it }),
+    receiveStock: (p) => rpc('app_stock_receive', { p }),
+    stockOverview: () => rpc('app_stock_overview'),
+    saveCount: (p) => rpc('app_stock_count', { p }),
+    countsList: (from, to) => rpc('app_stock_counts', { p_from: from, p_to: to }),
     findCustomers: (q) => (String(q || '').trim().length < 2 ? Promise.resolve([]) : rpc('app_customers_find', { p_q: q })),
   };
 }
