@@ -2,6 +2,7 @@
 import * as clock from '../clock.js';
 import { atMs, fromMs, addDays, fmtDur } from '../time.js';
 import { checkBooking, checkCheckIn, clashes, holdRange, extraHours, normPhone, STATUS_LABEL } from '../rules.js';
+import { addSales, ensureSales, addSalesSample, SALES_DEFAULTS } from './local_ban.js';
 
 const KEY = 'lelabox.v1';
 const MIN = 60000;
@@ -13,9 +14,10 @@ const err = (code, message) => { throw new StoreError(code, message); };
 const clashCode = (msg) => (/trùng với|đang có khách/.test(msg) ? 'TRUNG' : 'LOI');
 const copy = (x) => JSON.parse(JSON.stringify(x));
 
-export const DEFAULT_SETTINGS = { open: '08:00', close: '23:00', holdMin: 180, freeMin: 180, graceMin: 10, lateMin: 15, perBox: 3 };
+export const DEFAULT_SETTINGS = { open: '08:00', close: '23:00', holdMin: 180, freeMin: 180, graceMin: 10, lateMin: 15, perBox: 3, ...SALES_DEFAULTS };
 const DEFAULT_STAFF = [
   { id: 'u_chu', name: 'Chủ (thử)', role: 'chu', email: 'chu@vi-du.local' },
+  { id: 'u_ql', name: 'Quản lý (thử)', role: 'ql', email: 'ql@vi-du.local' },
   { id: 'u_a', name: 'Nhân viên A (thử)', role: 'nv', email: 'a@vi-du.local' },
   { id: 'u_b', name: 'Nhân viên B (thử)', role: 'nv', email: 'b@vi-du.local' },
 ];
@@ -28,7 +30,8 @@ function baseState() {
   };
 }
 
-export function createLocalStore({ storage = globalThis.localStorage, seed = true } = {}) {
+// salesSeed: nạp menu / khuyến mãi / kho mẫu (mặc định theo seed)
+export function createLocalStore({ storage = globalThis.localStorage, seed = true, salesSeed = seed } = {}) {
   let volatile = false;
   let st = null;
   try {
@@ -38,6 +41,8 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
     if (raw) st = JSON.parse(raw);
   } catch { volatile = true; }
   if (!st) { st = baseState(); if (seed) addSample(st); }
+  ensureSales(st);
+  if (salesSeed) addSalesSample(st);
   const save = () => { if (volatile) return; try { storage.setItem(KEY, JSON.stringify(st)); } catch { volatile = true; api.volatile = true; } };
   save();
 
@@ -80,7 +85,7 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
     async saveStaff(u) {
       needChu();
       if (!String(u.name || '').trim()) err('LOI', 'Nhập tên nhân viên');
-      if (!['chu', 'nv'].includes(u.role)) err('LOI', 'Chọn vai trò');
+      if (!['chu', 'ql', 'nv'].includes(u.role)) err('LOI', 'Chọn vai trò');
       const cur = u.id && st.staff.find((x) => x.id === u.id);
       if (cur) Object.assign(cur, { name: u.name.trim(), role: u.role, email: u.email || '' });
       else st.staff.push({ id: id(), name: u.name.trim(), role: u.role, email: u.email || '' });
@@ -91,7 +96,9 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
     async saveSettings(s) {
       needChu();
       const n = { ...st.settings, ...s };
-      for (const k of ['holdMin', 'freeMin', 'graceMin', 'lateMin', 'perBox']) n[k] = Number(n[k]);
+      for (const k of ['holdMin', 'freeMin', 'graceMin', 'lateMin', 'perBox', 'extraPrice', 'minPerPerson', 'noOrderMin']) n[k] = Number(n[k]);
+      n.paper = String(n.paper); n.shopName = String(n.shopName || '').trim() || 'Lela Box'; n.billFooter = String(n.billFooter || '').trim();
+      if (!Number.isInteger(n.extraPrice) || n.extraPrice < 0 || !(n.minPerPerson >= 0 && n.minPerPerson <= 5) || !(n.noOrderMin >= 0) || !['58', '80'].includes(n.paper)) err('LOI', 'Số chưa hợp lệ');
       if (!/^\d{2}:(00|30)$/.test(n.open) || !/^\d{2}:(00|30)$/.test(n.close)) err('LOI', 'Giờ mở / đóng cửa phải tròn giờ hoặc rưỡi (vd 08:00, 08:30)');
       if (n.close <= n.open) err('LOI', 'Giờ đóng cửa phải sau giờ mở cửa');
       if (n.perBox < 1 || n.freeMin < 30 || n.holdMin < 30) err('LOI', 'Số chưa hợp lệ');
@@ -242,6 +249,7 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
         });
     },
   };
+  addSales(api, { st: () => st, save, id, needMe, err, copy, log, clock, visit, live, ctx });
   api.volatile = volatile;
   api.statusLabel = STATUS_LABEL;
   return api;

@@ -69,6 +69,15 @@ export function createSupabaseStore({ supabaseUrl, anonKey }) {
     noShow: (id) => rpc('app_no_show', { p_id: id }),
     moveBox: (id, boxId) => rpc('app_move_box', { p_id: id, p_box: boxId }),
     editTimes: (id, t) => rpc('app_edit_times', { p_id: id, p: t }),
+    // Bán hàng + kho
+    setPin: (pin) => rpc('app_pin_set', { p_pin: pin }),
+    listMenu: ({ all = false } = {}) => rpc('app_menu_list', { p_all: all }),
+    saveMenuItem: (item) => rpc('app_menu_save', { p: item }),
+    importMenu: (items) => rpc('app_menu_import', { p_items: items }),
+    listPromotions: () => rpc('app_promo_list'),
+    savePromotion: (p) => rpc('app_promo_save', { p }),
+    listVouchers: () => rpc('app_voucher_list'),
+    saveVoucher: (v) => rpc('app_voucher_save', { p: v }),
     findCustomers: (q) => (String(q || '').trim().length < 2 ? Promise.resolve([]) : rpc('app_customers_find', { p_q: q })),
   };
 }
