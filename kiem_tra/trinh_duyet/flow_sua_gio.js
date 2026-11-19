@@ -20,10 +20,11 @@ export default async function (h) {
   await h.go('#/khach'); await h.go('#/bang');
   h.check(h.$$('.nhac-item').some((e) => e.textContent.includes('Box 10 chưa bấm Khách về')), 'nhắc "Box 10 chưa bấm Khách về"');
   await h.click('.tile[data-box="b10"]');
-  await h.clickText('Khách về', '.sheet button');
-  h.check(h.$('.sheet input[name="out"]').value === '23:00', 'giờ ra mặc định = giờ đóng cửa ngày khách vào (23:00)');
-  h.check(h.has('Ngồi 8g28 → tính thêm 6 giờ'), 'xem trước đúng: ngồi 8g28 → thêm 6 giờ');
-  await h.clickText('Xác nhận khách về', '.sheet button');
+  await h.clickText('Thanh toán & khách về', '.sheet button');
+  h.check(h.$('#pay-out') && h.$('#pay-out').value === '23:00', 'giờ ra mặc định = giờ đóng cửa ngày khách vào (23:00)');
+  h.check(h.has('Ngồi thêm 6 giờ × 20.000đ (ngồi 8g28)') && h.has('120.000đ'), 'xem trước đúng: ngồi 8g28 → thêm 6 giờ = 120.000đ');
+  await h.click('.sheet [data-act="all-cash"]');
+  await h.click('.sheet [data-act="pay-ok"]');
   let v = (await store().visitsRange('2026-11-19', '2026-11-20')).find((x) => x.boxId === 'b10' && x.status === 've');
   h.check(v && v.minutes === 508 && v.extra === 6, 'lưu đúng 508 phút, thêm 6 giờ (không phải 18g28)');
 

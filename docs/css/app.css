@@ -145,3 +145,33 @@ details.log ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .nhac-wrap:empty { display: none; }
 .nhac-wrap .nhac { margin-bottom: 0; }
 .kvis button[data-visit] { color: inherit; }
+
+/* Bán hàng */
+.tile .t-money { font-size: 13px; font-weight: 700; }
+.sheet.wide { max-width: 1000px; }
+.om { display: grid; gap: 12px; }
+@media (min-width: 900px) { .om { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; } .om-order { position: sticky; top: 56px; } }
+.om-menu > * + * { margin-top: 8px; }
+.grps { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.grp { flex: none; border-radius: 99px; min-height: 36px; padding: 4px 12px; }
+.grp.on { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+.menu-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 64px; text-align: left; }
+.menu-btn span { font-size: 13px; color: var(--muted); }
+.menu-btn.combo { background: var(--book); border-color: #b9cdee; }
+.olines { list-style: none; margin: 0 0 8px; padding: 0; }
+.oline { display: flex; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.oline .ol-main { flex: 1; min-width: 0; }
+.oline .ol-act { display: flex; gap: 4px; flex: none; }
+.oline .ol-act button { min-height: 34px; min-width: 34px; padding: 2px 8px; }
+.oline.voided .ol-main b { text-decoration: line-through; color: var(--muted); }
+.oline.sent { background: #fbf8f4; }
+.slot .chips, .slot .picks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pill-btn.on { background: var(--sit); border-color: #5fb27a; color: var(--sit-ink); }
+.bill .bill-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.plines { list-style: none; margin: 0; padding: 0; font-size: 15px; }
+.plines li, .pl { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
+.plines li span, .pl span { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pl.ok { color: var(--sit-ink); }
+.act-label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 14px; }
+.wide-btn { width: 100%; margin-top: 8px; min-height: 48px; font-size: 17px; }

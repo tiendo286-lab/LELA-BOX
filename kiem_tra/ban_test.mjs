@@ -255,4 +255,13 @@ await t('ordersRange: QL/Chủ xem; phiếu huỷ hôm sau vẫn lấy theo ngà
   eq((await s.approvalsRange('2026-11-20', '2026-11-20')).map((a) => [a.kind, a.approvedBy, a.reason]), [['huy_hoa_don', 'Quản lý (thử)', 'nhầm']]);
 });
 
+// ===== Bước 8: đổi số lượng dòng chưa gửi =====
+await t('setLineQty: dòng chưa gửi đổi được, đã gửi thì không', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s));
+  const r = await goi(s, o.id, ['m_trdao']);
+  const a = await s.setLineQty(o.id, r.lines[0].id, 3);
+  await s.sendToBar(o.id);
+  eq([a.lines[0].qty, await msg(() => s.setLineQty(o.id, r.lines[0].id, 1)), await msg(() => s.setLineQty(o.id, r.lines[0].id, 0))], [3, 'Món đã gửi pha chế — huỷ món thay vì sửa', 'Món đã gửi pha chế — huỷ món thay vì sửa']);
+});
+
 done();

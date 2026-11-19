@@ -31,4 +31,12 @@ await t('summary', () => {
   const vs = [ngoi('v1', 'b1', 600), dat('v2', 'b2', 700)];
   eq(summary(boxes.map((b) => boxState(b, vs, at(620), S))), { trong: 11, ngoi: 1, sapDat: 1 });
 });
+// ===== Nhắc chưa gọi món (tính tiền bước 8) =====
+const S2 = { ...S, noOrderMin: 10 };
+const chuaGoi = (stats, now) => reminders([ngoi('v1', 'b1', 600)], boxes, customers, now, S2, stats).filter((r) => r.kind === 'chua_goi').map((r) => r.text);
+await t('chưa gọi món sau 10 phút → nhắc', () => eq(chuaGoi({ v1: { total: 0, have: 0, need: 2, firstAt: null } }, at(610)), ['Box 1 vào 10 phút chưa gọi món']));
+await t('mới 9 phút → chưa nhắc', () => eq(chuaGoi({ v1: { total: 0, have: 0, need: 2, firstAt: null } }, at(609)), []));
+await t('gọi chưa đủ → nhắc số món', () => eq(chuaGoi({ v1: { total: 35000, have: 1, need: 3, firstAt: at(602) } }, at(615)), ['Box 1 mới gọi 1/3 món']));
+await t('đủ món → không nhắc; không có số liệu phiếu → không nhắc', () => eq([chuaGoi({ v1: { total: 1, have: 2, need: 2 } }, at(700)), chuaGoi(undefined, at(700))], [[], []]));
+
 done();

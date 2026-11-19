@@ -41,9 +41,10 @@ export function summary(states) {
   };
 }
 
-const ORDER = ['tre', 'sap_luot', 'qua_gio', 'sap_het', 'quen_ve'];
+const ORDER = ['tre', 'sap_luot', 'qua_gio', 'sap_het', 'quen_ve', 'chua_goi'];
 
-export function reminders(visits, boxes, customers, now, s) {
+// orderStats (không bắt buộc): {visitId: {have, need}} từ snapshot → nhắc box chưa gọi đủ món
+export function reminders(visits, boxes, customers, now, s, orderStats = null) {
   const bn = (id) => (boxes.find((b) => b.id === id) || { name: id }).name;
   const cu = (id) => (customers || []).find((c) => c.id === id) || { name: 'Khách', phone: '' };
   const today = fromMs(now).date;
@@ -71,6 +72,8 @@ export function reminders(visits, boxes, customers, now, s) {
       .sort((a, b) => a.start - b.start)[0];
     if (nxt) add('sap_luot', v, `${bn(v.boxId)} còn khách, ${fmtMin(nxt.x.startMin)} có khách đặt (${cu(nxt.x.customerId).name})`);
     if (now > atMs(fromMs(v.inAt).date, closeMin)) add('quen_ve', v, `${bn(v.boxId)} chưa bấm Khách về`);
+    const os = orderStats && orderStats[v.id];
+    if (os && os.have < os.need && e >= (s.noOrderMin ?? 10)) add('chua_goi', v, os.have ? `${bn(v.boxId)} mới gọi ${os.have}/${os.need} món` : `${bn(v.boxId)} vào ${e} phút chưa gọi món`);
   }
   return out.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
 }

@@ -204,6 +204,15 @@ export function addSales(api, h) {
       }
       save(); return copy(o);
     },
+    async setLineQty(orderId, lineId, qty) {
+      needMe();
+      const o = openOrder(orderId);
+      const l = o.lines.find((x) => x.id === lineId) || err('LOI', 'Không tìm thấy món');
+      if (l.sentAt || l.voided) err('LOI', 'Món đã gửi pha chế — huỷ món thay vì sửa');
+      const q = int(qty);
+      if (q < 1) err('LOI', 'Số lượng phải từ 1');
+      l.qty = q; save(); return copy(o);
+    },
     async sendToBar(orderId) {
       needMe();
       const o = openOrder(orderId);

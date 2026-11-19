@@ -1,9 +1,12 @@
 // Bảng 12 box lúc này: trạng thái, khách vào / về, đổi box, nhắc việc.
 import { html, str, $, on, openSheet, toast, showError } from '../ui.js';
-import { fmtMin, fmtDur, fromMs, atMs, toMin, dayWindow } from '../time.js';
+import { fmtMin, fmtDur, fromMs } from '../time.js';
 import { boxState, summary, fmtPhone } from '../board.js';
 import { checkCheckIn, extraHours } from '../rules.js';
-import { openTimes, previewTimes } from './gio.js';
+import { openTimes } from './gio.js';
+import { openOrder } from './goi_mon.js';
+import { openPay } from './thanh_toan.js';
+import { fmtMoney } from '../money.js';
 
 const KIND_TEXT = { trong: 'Trống', ngoi: 'Đang ngồi', sap_het: 'Sắp hết giờ', qua_gio: 'Quá giờ', tam_ngung: 'Tạm ngừng' };
 
@@ -33,6 +36,7 @@ export default async function render(root, ctx) {
         <span class="t-name">${x.box.name}</span>
         <span class="t-main">${x.visit ? fmtDur(x.elapsed) : KIND_TEXT[x.kind]}</span>
         <span class="t-sub">${x.visit ? html`${x.visit.people} người${x.kind === 'qua_gio' ? html` · +${extraHours(x.elapsed, s)} giờ` : ''}` : ''}</span>
+        ${x.visit && snap.orderStats && snap.orderStats[x.visit.id] && snap.orderStats[x.visit.id].total ? html`<span class="t-money">${fmtMoney(snap.orderStats[x.visit.id].total)}</span>` : ''}
         ${x.next ? html`<span class="t-next">đặt ${fmtMin(x.next.startMin)}</span>` : ''}
       </button>`)}`);
     if (ctx.refreshReminders) ctx.refreshReminders();
@@ -90,38 +94,10 @@ export default async function render(root, ctx) {
       <p><b>${who(v)}</b>${c ? html` · <a href="tel:${c.phone}">${fmtPhone(c.phone)}</a>` : ''} · ${v.people} người<br>
       <span class="muted small">Vào lúc ${fmtMin(fromMs(v.inAt).min)} · hết ${s.freeMin / 60} giờ miễn phí lúc ${fmtMin(fromMs(v.inAt + s.freeMin * 60000).min)}</span></p>
       ${st.next ? html`<p class="warntext">⚠ ${fmtMin(st.next.startMin)} có khách đặt box này (${who(st.next)})</p>` : ''}
-      <div id="step" class="actions"><button class="primary" data-act="out">Khách về</button><button data-act="move">Đổi box</button><button data-act="edit">Sửa giờ vào</button></div>`);
+      <div id="step" class="actions"><button class="primary" data-act="order">Gọi món</button><button data-act="pay">Thanh toán & khách về</button><button data-act="move">Đổi box</button><button data-act="edit">Sửa giờ vào</button></div>`);
     const el = sh.el, step = $('#step', el);
-    const inDate = fromMs(v.inAt).date;
-    on(el, 'click', '[data-act="out"]', () => {
-      // Mặc định giờ ra = lúc này; quên bấm qua giờ đóng cửa / sang hôm sau thì mặc định = giờ đóng cửa ngày khách vào
-      const nowMs = ctx.now(), closeMs = atMs(inDate, dayWindow(s).closeMin);
-      const useNow = nowMs <= closeMs;
-      const defMin = fromMs(useNow ? nowMs : closeMs).min;
-      step.innerHTML = str(html`${useNow ? '' : html`<p class="warntext">Khách vào ngày ${inDate.slice(8, 10)}/${inDate.slice(5, 7)} lúc ${fmtMin(fromMs(v.inAt).min)} — chưa bấm về. Ghi giờ khách thực sự về:</p>`}
-        <label>Giờ ra<input name="out" type="time" value="${fmtMin(defMin)}"></label>
-        <p class="big" id="calc"></p><p class="err" id="calc-err"></p>
-        <button class="primary" data-act="out-ok">Xác nhận khách về</button>`);
-      const inp = $('[name="out"]', step);
-      const outMs = () => (inp.value ? atMs(inDate, toMin(inp.value)) : null);
-      const show = () => {
-        // Không sửa giờ và mặc định là lúc này → tính tới lúc này (giữ cả số giây)
-        const o = useNow && inp.value === fmtMin(defMin) ? ctx.now() : outMs();
-        const p = previewTimes(v.inAt, o, ctx.now(), s);
-        $('#calc', step).textContent = p.text; $('#calc-err', step).textContent = p.error || '';
-        $('[data-act="out-ok"]', step).disabled = !!p.error;
-        return { o, p };
-      };
-      inp.addEventListener('input', show); show();
-      step.__out = () => (useNow && inp.value === fmtMin(defMin) ? null : outMs());
-      step.__show = show;
-    });
-    on(el, 'click', '[data-act="out-ok"]', async () => {
-      if (step.__show().p.error) return;
-      const outAt = step.__out();
-      sh.close();
-      await act(() => store.checkOut(v.id, outAt), (r) => `${b.name}: khách về — ngồi ${fmtDur(r.minutes)}, tính thêm ${r.extra} giờ`);
-    });
+    on(el, 'click', '[data-act="order"]', () => { sh.close(); openOrder(ctx, v, b.name, draw, () => openPay(ctx, v.id, draw)); });
+    on(el, 'click', '[data-act="pay"]', () => { sh.close(); openPay(ctx, v.id, draw); });
     on(el, 'click', '[data-act="move"]', () => {
       const alts = checkCheckIn(b.id, cctx(), v.id).alternatives;
       const free = snap.boxes.filter((x) => x.active !== false && x.id !== b.id && !live().some((y) => y.boxId === x.id && y.status === 'ngoi'));

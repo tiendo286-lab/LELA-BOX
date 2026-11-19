@@ -27,9 +27,10 @@ export default async function (h) {
 
   // Khách về ở box quá giờ
   await h.click(tile('b6'));
-  await h.clickText('Khách về', '.sheet button');
-  h.check(h.has('Ngồi 3g20 → tính thêm 1 giờ'), 'hiện giờ ngồi và giờ tính thêm');
-  await h.clickText('Xác nhận khách về', '.sheet button');
+  await h.clickText('Thanh toán & khách về', '.sheet button');
+  h.check(h.has('Ngồi thêm 1 giờ × 20.000đ (ngồi 3g20)'), 'hiện giờ ngồi và tiền ngồi thêm');
+  await h.click('.sheet [data-act="all-cash"]');
+  await h.click('.sheet [data-act="pay-ok"]');
   h.check(tile('b6').classList.contains('k-trong'), 'Box 6 trống lại');
 
   // Đã xem nhắc

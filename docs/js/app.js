@@ -15,7 +15,7 @@ const PAGES = {
   '#/bao-cao': { title: 'Báo cáo', load: () => import('./pages/bao_cao.js'), chu: true },
   '#/cai-dat': { title: 'Cài đặt', load: () => import('./pages/cai_dat.js'), chu: true },
 };
-const TEST_USER = { chu: 'u_chu', nv: 'u_a' };
+const TEST_USER = { chu: 'u_chu', ql: 'u_ql', nv: 'u_a' };
 
 const root = $('#app');
 let store = null, me = null, cleanup = null, tick = null;
@@ -101,7 +101,7 @@ async function pollReminders() {
     const now = clock.now();
     const snap = await store.snapshot(fromMs(now).date);
     const live = snap.visits.filter((v) => v.status === 'dat' || v.status === 'ngoi');
-    mountReminders(el, reminders(live, snap.boxes, snap.customers, now, snap.settings), (boxId) => go('#/bang?box=' + boxId));
+    mountReminders(el, reminders(live, snap.boxes, snap.customers, now, snap.settings, snap.orderStats), (boxId) => go('#/bang?box=' + boxId));
   } catch (e) { /* lần sau thử lại */ }
 }
 setInterval(pollReminders, 30000);

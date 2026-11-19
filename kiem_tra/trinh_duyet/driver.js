@@ -55,6 +55,7 @@ const h = {
 };
 
 async function main() {
+  window.__lelaNoPrint = true;   // không mở hộp in thật trong bài thử
   notes.push(`trang ${location.pathname} · rộng ${innerWidth}px · ${window.top === window ? 'cửa sổ chính' : 'trong khung'}`);
   await waitFor(() => window.__lela && window.__lela.ready, 8000);
   await settle();
