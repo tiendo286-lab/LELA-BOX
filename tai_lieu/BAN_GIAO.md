@@ -1,31 +1,33 @@
 # Bàn giao — web quản lý box Lela
 
-Cập nhật: 19/11/2026 (phiên đầu tiên).
+Cập nhật: 19/11/2026 (phiên 2 — thêm tính tiền + kho thay KiotViet).
 
 ## Tình trạng
 
-- **Bản chạy thử trên máy đã xong và đạt toàn bộ bài thử.** Dữ liệu nằm trong trình duyệt, chưa có máy chủ thật, chưa đưa lên mạng.
-- Nhánh `dat-box` trong kho Git riêng ở `~/Lela Box`. Kho chưa có bản trên GitHub.
-- Tệp máy chủ `supabase/01_khoi_tao.sql` đã viết nhưng **chưa chạy lần nào**, vì máy không có Postgres. Lần đầu phải chạy thử kèm `supabase/kiem_tra_01.sql` (tự hoàn tác) trước khi chạy thật.
+- **Bản chạy thử trên máy đã có đủ: quản lý box + gọi món / thanh toán + kho + báo cáo tiền.** Dữ liệu nằm trong trình duyệt, chưa có máy chủ thật, chưa đưa lên mạng.
+- Nhánh: `dat-box` (quản lý box) → `tinh-tien` (tính tiền + kho, làm tiếp từ `dat-box`). Kho Git riêng ở `~/Lela Box`, chưa có bản trên GitHub. Chưa gộp vào `main` — chờ anh Tiến duyệt.
+- Anh Tiến chốt (19/11): **web riêng**, không gộp vào web Milano; **thay hẳn KiotViet** ở Lela Box (LLB vẫn chốt ca bên Milano như cũ).
+- Tệp máy chủ `supabase/01_khoi_tao.sql` + `02_tinh_tien_kho.sql` đã viết, **chưa chạy lần nào** (máy không có Postgres). Đã soát cú pháp bằng bộ đọc Postgres (pglast) và soát tên hàm / tham số khớp với web. Lần đầu phải chạy thử kèm `kiem_tra_01.sql`, `kiem_tra_02.sql` (tự hoàn tác) trước khi chạy thật.
 
 ## Đã kiểm
 
-- Hàm thuần: `kiem_tra/chay_jsc.sh` gồm giờ, đồng hồ, quy tắc, bảng box / nhắc việc, lưu chạy thử, báo cáo, bản máy chủ. Tất cả đạt.
-- Giao diện: `kiem_tra/chay_het.sh` chạy 13 bài trên Chrome ẩn (Nhân viên / Chủ, máy tính / khung điện thoại 390px). Tất cả đạt, không tràn ngang, không có chữ lạ.
-- Duyệt cuối (người duyệt mới): đã sửa 1 lỗi nghiêm trọng, 3 lỗi quan trọng, và 2 lỗi em xếp lên mức quan trọng. Danh sách lỗi nhỏ còn để lại ở mục dưới.
-- Tệp `chay_thu.command`: mở được trang (mã 200), có in địa chỉ để mở trên điện thoại.
+- Hàm thuần: `kiem_tra/chay_jsc.sh` — giờ, đồng hồ, quy tắc, bảng box / nhắc việc, lưu chạy thử, báo cáo, **tiền** (`money_test`), **kho + đọc file menu** (`stock_test`), **mẫu in** (`print_test`), **bán hàng** (`ban_test`), bản máy chủ. Tất cả đạt.
+- Giao diện: `kiem_tra/chay_het.sh` — 23 bài trên Chrome ẩn (Nhân viên / Quản lý / Chủ, máy tính / khung điện thoại 390px), gồm `flow_ban_hang`, `flow_cai_dat_ban`, `flow_kho`. Tất cả đạt, không tràn ngang, không có chữ lạ.
+- SQL: `kiem_tra/soat_sql.py supabase/*.sql` (cần pglast) — đạt cú pháp.
 
 ## Quyết định anh Tiến đã chốt
 
-Xem bảng ở mục 5 của bản thiết kế (`docs/superpowers/specs/2026-11-19-dat-box-design.md`). Một số điểm chính:
-- 12 box, tối đa 3 người mỗi box.
-- Mỗi lần đặt giữ box 3 giờ.
-- Miễn phí 3 giờ tính từ lúc khách vào. Được thêm 10 phút, quá thì làm tròn lên từng giờ: 3g10 → 0, 3g11 → 1, 4g01 → 2.
-- Khách đến trễ 15 phút thì nhắc.
-- Ghi cả khách vãng lai.
-- Nhóm đặt 1–3 box trên một phiếu, mỗi box vào / về riêng.
+- Quản lý box: xem mục 5 của `tai_lieu/superpowers/specs/2026-11-19-dat-box-design.md`.
+- Tính tiền + kho: xem mục 5 và 8 của `tai_lieu/superpowers/specs/2026-11-19-tinh-tien-kho-design.md`. Chính:
+  - Gọi món ở máy tính quầy; trả tiền lúc về (mỗi lượt box một phiếu); tiền mặt / chuyển khoản / chia / tách bill.
+  - Giờ ngồi thêm: một giá mỗi giờ mỗi box (Chủ cài, mẫu 20.000đ), tự cộng vào hoá đơn.
+  - Combo giá cố định, khách tự chọn món trong combo. Khuyến mãi theo giờ / ngày, voucher, giảm tay. **Chỉ 1 khuyến mãi mỗi hoá đơn** (lấy cái lợi hơn cho khách).
+  - Giảm tay / huỷ món đã gửi / huỷ hoá đơn đã thu: chỉ Quản lý / Chủ (nhân viên cần PIN).
+  - Bắt buộc gọi món tối thiểu (web nhắc, không chặn). 1 máy in cả hoá đơn + phiếu pha chế; in thẳng từ Chrome.
+  - Kho: nhập số lượng, chỉ hàng bán nguyên tự trừ, kiểm kê ra chênh lệch. Không hoá đơn điện tử. Tích điểm, chốt ca: làm sau. Mất mạng: phát Wi-Fi điện thoại.
+  - Chuyển đổi: chạy song song với KiotViet 1 tuần rồi mới bỏ.
 
-## Lỗi nhỏ còn để lại (người duyệt nêu, chưa sửa)
+## Lỗi nhỏ còn để lại (từ phiên 1, chưa sửa)
 
 - Sửa phiếu nhóm đã có box vào rồi: có thể thêm box vượt quá 3 cho cả phiếu.
 - Bản chạy thử cho khách vào box đang tạm ngừng (máy chủ thì chặn).
@@ -37,25 +39,34 @@ Xem bảng ở mục 5 của bản thiết kế (`docs/superpowers/specs/2026-11
 
 ## Việc còn mở
 
-1. Anh Tiến bấm thử, góp ý.
-2. Giờ mở / đóng cửa thật. Đang để mẫu 08:00–23:00, Chủ sửa được trong Cài đặt.
-3. Đưa lên dùng thật (các bước ở dưới).
-4. Gom tin nhắn TikTok / Facebook / Zalo: chưa làm. Hướng đi: dùng Pancake trước, hoặc nộp đơn xin TikTok cho dùng tin nhắn (Business Messaging API), sau này gắn vào web này.
+1. Anh Tiến bấm thử (Chủ / Quản lý / Nhân viên), góp ý.
+2. **Gửi file Excel "Hàng hoá" xuất từ KiotViet** (để ngoài kho mã) để khớp tên cột khi nhập menu. Đọc file .xlsx dùng thư viện SheetJS tải từ mạng — chưa thử với file thật.
+3. Khổ giấy máy in thật (xem tem máy in), giá ngồi thêm thật, giờ mở / đóng cửa thật.
+4. Đưa lên dùng thật (các bước dưới) rồi chạy song song KiotViet 1 tuần.
+5. Sau này: tích điểm khách thân; trang cho khách tự đặt box (link TikTok); gom tin nhắn TikTok / Facebook / Zalo (Pancake hoặc xin TikTok Business Messaging API).
 
 ## Đưa lên dùng thật (khi anh đồng ý)
 
-1. **Tạo dự án Supabase mới** (supabase.com › New project, vùng Singapore). Ghi lại *Project URL* và *anon public key*. Hai giá trị này được phép để trong web. **Không** dùng khoá `service_role`.
-2. **Chạy SQL:** gửi `01_khoi_tao.sql` + `kiem_tra_01.sql` cùng một lần, xem dòng `REPORT>>` đúng như mong đợi. Sau đó mới gửi riêng `01_khoi_tao.sql` để chạy thật.
-3. **Tạo Chủ đầu tiên:** vào Authentication › Users › *Add user*, nhập email và mật khẩu của Chủ. Sau đó chạy:
+1. **Tạo dự án Supabase mới** (supabase.com › New project, vùng Singapore). Ghi lại *Project URL* và *anon public key* — hai giá trị này được để trong web. **Không** dùng khoá `service_role`.
+2. **Chạy SQL:**
+   - Gửi `01_khoi_tao.sql` + `02_tinh_tien_kho.sql` + `kiem_tra_01.sql` (rồi một lần khác `01` + `02` + `kiem_tra_02.sql`) — xem dòng `REPORT>>`, đối chiếu từng mục "mong:". Có lỗi thì sửa bằng tệp mới `03_...sql`, không sửa 01/02 nếu đã chạy thật.
+   - Đúng hết mới gửi riêng `01_khoi_tao.sql`, rồi `02_tinh_tien_kho.sql` để chạy thật.
+3. **Tạo Chủ đầu tiên:** Authentication › Users › *Add user* (email + mật khẩu của Chủ), rồi chạy:
    `insert into staff (email, name, role) values ('<email chủ>', 'Chủ', 'chu');`
-   Các nhân viên khác: tạo tài khoản ở Authentication, rồi Chủ thêm email của họ trong web, mục Cài đặt › Nhân viên.
+   Nhân viên / Quản lý khác: tạo tài khoản ở Authentication, rồi Chủ thêm email trong web (Cài đặt › Nhân viên). Chủ và Quản lý vào Cài đặt › **PIN của tôi** đặt PIN.
 4. **Sửa `docs/js/config.js`:** `store: 'supabase'`, điền `supabaseUrl` và `anonKey`.
 5. **Tạo kho GitHub mới** rồi đẩy lên. Bật GitHub Pages, chọn thư mục `docs/` trên nhánh `main`.
-6. Thử lại trên web thật: hai máy cùng đặt một giờ thì một máy phải bị chặn.
+6. **Chuẩn bị bán:** Cài đặt › Menu › nhập file KiotViet; tạo combo (ô chọn món), khuyến mãi, voucher; giá ngồi thêm; khổ giấy; In thử. Kho › thêm hàng bán nguyên (gắn món) + nguyên liệu; làm một lần **Kiểm kê** để có tồn đầu.
+7. **Máy quầy:** tạo biểu tượng Chrome in thẳng (README › Máy in bill).
+8. Thử lại trên web thật: hai máy cùng đặt một giờ thì một máy bị chặn; hai máy cùng thu một phiếu thì một máy báo "Phiếu đã thu".
+9. **Chạy song song KiotViet 1 tuần**, cuối mỗi ngày so tổng doanh thu. Đủ 1 tuần không lỗi → ngừng gia hạn KiotViet.
 
 ## Ghi chú cho phiên AI sau
 
-- Kiểm tra trước khi đẩy: `kiem_tra/chay_het.sh` phải đạt hết. Bài giao diện mới thì thêm vào `kiem_tra/trinh_duyet/danh_sach.txt`.
-- Giờ giả lập trong bài thử: `?now=2026-11-19T14:32`. Dữ liệu mẫu tạo quanh giờ này: Box 2 ngồi 2g10, Box 3 ngồi 2g52, Box 6 ngồi 3g20, Box 7 đặt 14:00 đang trễ, Box 4 + 5 đặt 16:30.
-- Chrome ẩn không cho cửa sổ hẹp dưới 500px. Muốn chụp hoặc thử khung điện thoại thì đi qua iframe (`test/phone.html`, `kiem_tra/chup.sh`).
-- `jsc` không có `URLSearchParams`. Hàm thuần dùng cho cả `jsc` lẫn trình duyệt thì phải tránh nó.
+- Kiểm tra trước khi đẩy: `kiem_tra/chay_het.sh` phải đạt hết. Bài giao diện mới thì thêm vào `kiem_tra/trinh_duyet/danh_sach.txt`. Vai trò thử: `chu`, `ql`, `nv` (`?role=`).
+- Giờ giả lập: `?now=2026-11-19T14:32` (Thứ 5 — khuyến mãi mẫu "Giờ vàng 14–17h −20% Trà" đang chạy). Dữ liệu mẫu: Box 2 ngồi 2g10 (3 người, chưa gọi món), Box 3 ngồi 2g52, Box 6 ngồi 3g20, Box 7 đặt 14:00 đang trễ, Box 4 + 5 đặt 16:30. PIN thử: Chủ 1111, Quản lý 2222.
+- Bài thử đặt `window.__lelaNoPrint = true` (không mở hộp in); nội dung in ghi vào `window.__lelaPrints`.
+- Duyệt PIN trên máy chủ trả `{__error}` thay vì ném lỗi (để giữ bộ đếm sai PIN); `supabase.js` tự đổi thành lỗi.
+- Chrome ẩn không cho cửa sổ hẹp dưới 500px → thử khung điện thoại qua iframe (`test/phone.html`, `kiem_tra/chup.sh`).
+- `jsc` không có `URLSearchParams`. Hàm thuần dùng chung jsc + trình duyệt phải tránh nó.
+- Lệnh shell có `rm`/`rsync --delete` lẫn trong heredoc dài đôi khi bị chặn an toàn → tách lệnh, sửa tệp bằng công cụ Edit.

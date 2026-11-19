@@ -1,6 +1,6 @@
 # Thiết kế: Tính tiền + Kho — thay KiotViet ở Lela Box
 
-Ngày: 19/11/2026 (bản 1) · Người quyết định: anh Tiến (chủ quán, không phải lập trình viên) · Nền: web quản lý box đã làm (`docs/superpowers/specs/2026-11-19-dat-box-design.md`, nhánh `dat-box`).
+Ngày: 19/11/2026 (bản 1) · Người quyết định: anh Tiến (chủ quán, không phải lập trình viên) · Nền: web quản lý box đã làm (`tai_lieu/superpowers/specs/2026-11-19-dat-box-design.md`, nhánh `dat-box`).
 
 ## 1. Vì sao làm
 
