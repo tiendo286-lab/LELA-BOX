@@ -78,6 +78,18 @@ export function createSupabaseStore({ supabaseUrl, anonKey }) {
     savePromotion: (p) => rpc('app_promo_save', { p }),
     listVouchers: () => rpc('app_voucher_list'),
     saveVoucher: (v) => rpc('app_voucher_save', { p: v }),
+    ordersOfVisit: (visitId) => rpc('app_orders_of_visit', { p_visit: visitId }),
+    addLines: (id, items) => rpc('app_order_add', { p_id: id, p_items: items }),
+    removeLine: (id, lineId, auth = null) => rpc('app_order_remove_line', { p_id: id, p_line: lineId, p_auth: auth }),
+    sendToBar: (id) => rpc('app_order_send', { p_id: id }),
+    splitOrder: (id, lineIds) => rpc('app_order_split', { p_id: id, p_lines: lineIds }),
+    setVoucher: (id, code) => rpc('app_order_voucher', { p_id: id, p_code: code }),
+    setManualDiscount: (id, x) => rpc('app_order_manual', { p_id: id, p: x }),
+    quote: (ids, outAt = null) => rpc('app_order_quote', { p_ids: ids, p_out_ms: outAt }),
+    pay: (ids, p) => rpc('app_order_pay', { p_ids: ids, p }),
+    voidOrder: (id, auth) => rpc('app_order_void', { p_id: id, p_auth: auth }),
+    receiptOf: (id) => rpc('app_order_receipt', { p_id: id }),
+    movesList: (from, to) => rpc('app_stock_moves', { p_from: from, p_to: to }),
     findCustomers: (q) => (String(q || '').trim().length < 2 ? Promise.resolve([]) : rpc('app_customers_find', { p_q: q })),
   };
 }

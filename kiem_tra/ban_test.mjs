@@ -48,4 +48,171 @@ await t('cài đặt mới: giá ngồi thêm âm / khổ giấy lạ → lỗi'
   eq([await code(() => s.saveSettings({ extraPrice: -1 })), await code(() => s.saveSettings({ paper: '72' })), (await s.saveSettings({ extraPrice: 25000 })).extraPrice], ['LOI', 'LOI', 25000]);
 });
 
+// ===== Bước 4: phiếu, gửi pha chế, thanh toán, huỷ hoá đơn =====
+const vao = async (s, boxId = 'b1', people = 2) => (await s.walkIn({ boxId, people })).id;
+const phieu = async (s, vid) => (await s.ordersOfVisit(vid))[0];
+const goi = (s, oid, ...items) => s.addLines(oid, items.map(([menuItemId, qty = 1, picks]) => ({ menuItemId, qty, note: '', picks })));
+const visitOf = async (s, vid) => (await s.snapshot(D)).visits.find((v) => v.id === vid) || (await s.visitsRange('2026-11-01', '2026-11-30')).find((v) => v.id === vid);
+
+await t('phieu_tu_mo: khách vào → có 1 phiếu mở', async () => {
+  const s = await fresh(); const vid = await vao(s);
+  const os = await s.ordersOfVisit(vid); const again = await s.ordersOfVisit(vid);
+  eq([os.length, os[0].status, again[0].id === os[0].id], [1, 'mo', true]);
+});
+await t('gia_chep_luc_goi: đổi giá menu không đổi phiếu', async () => {
+  const s = await fresh(); const vid = await vao(s); const o = await phieu(s, vid);
+  await goi(s, o.id, ['m_trdao']);
+  await as(s, 'u_chu'); await s.saveMenuItem({ ...(await s.listMenu()).find((m) => m.id === 'm_trdao'), price: 40000 });
+  eq((await phieu(s, vid)).lines[0].price, 35000);
+});
+await t('combo phải chọn đủ món', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s, 'b1', 3));
+  eq(await msg(() => goi(s, o.id, ['m_combo3', 1, [{ menuItemId: 'm_trdao' }]])), 'Chọn đủ món cho combo');
+  const r = await goi(s, o.id, ['m_combo3', 1, [{ menuItemId: 'm_trdao' }, { menuItemId: 'm_trvai' }, { menuItemId: 'm_cfs' }, { menuItemId: 'm_hd' }]]);
+  eq([r.lines[0].picks.map((p) => p.name).join(), r.lines[0].serves], ['Trà đào,Trà vải,Cà phê sữa,Hướng dương', 3]);
+});
+await t('combo: món không thuộc nhóm của ô → lỗi', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s));
+  eq(await msg(() => goi(s, o.id, ['m_combo3', 1, [{ menuItemId: 'm_coca' }, { menuItemId: 'm_trvai' }, { menuItemId: 'm_cfs' }, { menuItemId: 'm_hd' }]])), 'Chọn đủ món cho combo');
+});
+await t('gui_pha_che_chi_mon_moi', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s));
+  await goi(s, o.id, ['m_trdao', 2], ['m_coca']);
+  const a = await s.sendToBar(o.id);
+  await goi(s, o.id, ['m_hd']);
+  const b = await s.sendToBar(o.id);
+  eq([a.ticket.lines.length, a.ticket.again, a.ticket.boxName, b.ticket.lines.map((l) => l.name), b.ticket.again, await msg(() => s.sendToBar(o.id))],
+    [2, false, 'Box 1', ['Hướng dương'], true, 'Không có món mới để gửi']);
+});
+await t('xoa_chua_gui_khong_pin', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s));
+  const r = await goi(s, o.id, ['m_trdao']);
+  eq((await s.removeLine(o.id, r.lines[0].id)).lines.length, 0);
+});
+await t('huy_da_gui_can_pin', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s));
+  const r = await goi(s, o.id, ['m_trdao']); await s.sendToBar(o.id);
+  const lid = r.lines[0].id;
+  const c1 = await code(() => s.removeLine(o.id, lid));
+  const c2 = await msg(() => s.removeLine(o.id, lid, { pin: '9999', reason: 'khách đổi' }));
+  const x = await s.removeLine(o.id, lid, { pin: '2222', reason: 'khách đổi' });
+  eq([c1, c2, x.lines[0].voided.by, x.lines.length], ['QUYEN', 'PIN không đúng', 'Quản lý (thử)', 1]);
+});
+await t('QL tự huỷ không cần PIN nhưng phải ghi lý do', async () => {
+  const s = await fresh('u_ql'); const o = await phieu(s, await vao(s));
+  const r = await goi(s, o.id, ['m_trdao']); await s.sendToBar(o.id);
+  eq([await msg(() => s.removeLine(o.id, r.lines[0].id, { reason: '' })), !!(await s.removeLine(o.id, r.lines[0].id, { reason: 'pha hỏng' })).lines[0].voided], ['Ghi lý do', true]);
+});
+await t('pin_sai_5_lan → khoá 5 phút', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s));
+  const r = await goi(s, o.id, ['m_trdao']); await s.sendToBar(o.id);
+  for (let i = 0; i < 5; i++) await code(() => s.removeLine(o.id, r.lines[0].id, { pin: '000' + i, reason: 'x' }));
+  const locked = await msg(() => s.removeLine(o.id, r.lines[0].id, { pin: '2222', reason: 'x' }));
+  clock.advance(5);
+  const ok = await code(() => s.removeLine(o.id, r.lines[0].id, { pin: '2222', reason: 'x' }));
+  eq([locked, ok], ['Sai PIN quá 5 lần — chờ 5 phút', 'OK']);
+});
+await t('thanh_toan_mot_lenh: tiền món + giờ thêm, lượt về, trừ kho', async () => {
+  const s = await fresh('u_a', 480); const vid = await vao(s); const o = await phieu(s, vid);
+  await goi(s, o.id, ['m_trdao'], ['m_coca']);
+  clock.set(atMs(D, 480 + 241));
+  const q = await s.quote([o.id]);
+  const r = await s.pay([o.id], { transfer: 0, cashGiven: 100000 });
+  const v = await visitOf(s, vid);
+  await as(s, 'u_chu');
+  const mv = await s.movesList(D, D);
+  eq([q.total, q.orders[0].priced.extraAmount, r.receipt.change, r.receipt.priced.total, v.status, v.extra, mv.filter((m) => m.kind === 'ban').map((m) => [m.name, m.qty])],
+    [95000, 40000, 5000, 95000, 've', 2, [['Coca', 1]]]);
+});
+await t('thu_hai_lan → Phiếu đã thu', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s)); await goi(s, o.id, ['m_coca']);
+  await s.pay([o.id], { transfer: 20000, cashGiven: 0 });
+  eq(await msg(() => s.pay([o.id], { transfer: 20000, cashGiven: 0 })), 'Phiếu đã thu');
+});
+await t('thu_0d_can_pin', async () => {
+  const s = await fresh(); const vid = await vao(s); const o = await phieu(s, vid);
+  clock.advance(60);
+  const c = await code(() => s.pay([o.id], { transfer: 0, cashGiven: 0 }));
+  await s.pay([o.id], { transfer: 0, cashGiven: 0, auth: { pin: '1111', reason: 'khách quen ghé chơi' } });
+  eq([c, (await visitOf(s, vid)).status], ['QUYEN', 've']);
+});
+await t('tach_bill: giờ thêm nằm ở phiếu thu cuối', async () => {
+  const s = await fresh('u_a', 480); const vid = await vao(s); const o = await phieu(s, vid);
+  const r = await goi(s, o.id, ['m_trdao'], ['m_coca'], ['m_hd']);
+  const o2 = await s.splitOrder(o.id, [r.lines[2].id]);
+  clock.set(atMs(D, 480 + 200));
+  const q2 = await s.quote([o2.id]);
+  await s.pay([o2.id], { transfer: 0, cashGiven: 25000 });
+  const still = (await visitOf(s, vid)).status;
+  const q1 = await s.quote([o.id]);
+  await s.pay([o.id], { transfer: q1.total, cashGiven: 0 });
+  eq([o2.lines.length, q2.orders[0].isLast, q2.total, still, q1.orders[0].priced.extraAmount, q1.total, (await visitOf(s, vid)).status],
+    [1, false, 25000, 'ngoi', 20000, 75000, 've']);
+});
+await t('tra_chung_nhom: 2 box, mỗi box tính giờ thêm riêng', async () => {
+  const s = await fresh('u_a', 480);
+  const k = await s.createBooking({ name: 'Nhóm', phone: '0911222333', date: D, startMin: 510, durMin: 180, people: 5, boxIds: ['b1', 'b2'], channel: 'tiktok', note: '' });
+  clock.set(atMs(D, 510)); for (const v of k.visits) await s.checkIn(v.id);
+  const [o1, o2] = [await phieu(s, k.visits[0].id), await phieu(s, k.visits[1].id)];
+  await goi(s, o1.id, ['m_coca']);
+  clock.set(atMs(D, 510 + 200));
+  const q = await s.quote([o1.id, o2.id]);
+  await s.pay([o1.id, o2.id], { transfer: q.total, cashGiven: 0 });
+  eq([q.orders.map((x) => x.priced.extraAmount), q.total, (await visitOf(s, k.visits[0].id)).status, (await visitOf(s, k.visits[1].id)).status], [[20000, 20000], 60000, 've', 've']);
+});
+await t('doi_box_phieu_theo_luot', async () => {
+  const s = await fresh(); const vid = await vao(s); const o = await phieu(s, vid);
+  await goi(s, o.id, ['m_coca']); await s.moveBox(vid, 'b8');
+  eq([(await phieu(s, vid)).id === o.id, (await s.quote([o.id])).boxNames], [true, ['Box 8']]);
+});
+await t('quen_ve_hom_sau: giờ ra = giờ đóng cửa hôm trước', async () => {
+  const s = await fresh('u_a', 1200); const vid = await vao(s); const o = await phieu(s, vid);
+  clock.set(atMs('2026-11-20', 540));
+  const q = await s.quote([o.id], atMs(D, 1380));
+  await s.pay([o.id], { transfer: 0, cashGiven: 0, outAt: atMs(D, 1380), auth: { pin: '1111', reason: 'quên bấm' } });
+  const v = await visitOf(s, vid);
+  eq([q.orders[0].priced.extraAmount, v.minutes, v.extra], [0, 180, 0]);
+});
+await t('huy_hoa_don_hoan_kho', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s)); await goi(s, o.id, ['m_coca']);
+  await s.pay([o.id], { transfer: 20000, cashGiven: 0 });
+  clock.set(atMs('2026-11-20', 600));
+  const c = await code(() => s.voidOrder(o.id, {}));
+  const x = await s.voidOrder(o.id, { pin: '2222', reason: 'thu nhầm' });
+  await as(s, 'u_chu');
+  const mv = await s.movesList(D, '2026-11-20');
+  eq([c, x.status, x.voidedBy, mv.filter((m) => m.kind === 'hoan').map((m) => [m.name, m.qty])], ['QUYEN', 'huy', 'Quản lý (thử)', [['Coca', 1]]]);
+  eq(await msg(() => s.voidOrder(o.id, { reason: 'lại' })), 'Chỉ huỷ được hoá đơn đã thu');
+});
+await t('voucher_dung_mot_lan', async () => {
+  const s = await fresh('u_chu');
+  await s.saveVoucher({ code: 'ONE', active: true, kind: 'amt', value: 5000, maxUses: 1, minTotal: 0 });
+  const a = await phieu(s, await vao(s, 'b1')); await goi(s, a.id, ['m_trdao']);
+  const setA = await s.setVoucher(a.id, 'one');
+  const qa = await s.quote([a.id]);
+  await s.pay([a.id], { transfer: qa.total, cashGiven: 0 });
+  const b = await phieu(s, await vao(s, 'b2')); await goi(s, b.id, ['m_trdao']);
+  eq([setA.voucherCode, qa.total, await msg(() => s.setVoucher(b.id, 'ONE')), await msg(() => s.setVoucher(b.id, 'KHONGCO'))], ['ONE', 30000, 'Mã đã dùng hết lượt', 'Mã không đúng hoặc đã tắt']);
+});
+await t('giảm tay: nhân viên cần PIN, ghi người duyệt', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s)); await goi(s, o.id, ['m_trdao']);
+  const c = await code(() => s.setManualDiscount(o.id, { kind: 'amt', value: 5000, reason: 'khách quen' }));
+  const x = await s.setManualDiscount(o.id, { kind: 'amt', value: 5000, pin: '1111', reason: 'khách quen' });
+  eq([c, x.manual.approvedBy, (await s.quote([o.id])).total], ['QUYEN', 'Chủ (thử)', 30000]);
+});
+await t('quote cảnh báo món tối thiểu', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s, 'b3', 3)); await goi(s, o.id, ['m_trdao']);
+  eq((await s.quote([o.id])).minWarn, 'Box 3: 3 người mới gọi 1 món');
+});
+await t('nhac_chua_goi: snapshot có orderStats', async () => {
+  const s = await fresh(); const vid = await vao(s);
+  eq((await s.snapshot(D)).orderStats[vid], { total: 0, have: 0, need: 2, firstAt: null });
+});
+await t('in lại hoá đơn', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s)); await goi(s, o.id, ['m_coca']);
+  await s.pay([o.id], { transfer: 20000, cashGiven: 0 });
+  const r = await s.receiptOf(o.id);
+  eq([r.reprint, r.priced.total, r.boxNames], [true, 20000, ['Box 1']]);
+});
+
 done();

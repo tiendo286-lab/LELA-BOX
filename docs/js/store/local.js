@@ -2,7 +2,7 @@
 import * as clock from '../clock.js';
 import { atMs, fromMs, addDays, fmtDur } from '../time.js';
 import { checkBooking, checkCheckIn, clashes, holdRange, extraHours, normPhone, STATUS_LABEL } from '../rules.js';
-import { addSales, ensureSales, addSalesSample, SALES_DEFAULTS } from './local_ban.js';
+import { addSales, ensureSales, addSalesSample, orderStatsOf, SALES_DEFAULTS } from './local_ban.js';
 
 const KEY = 'lelabox.v1';
 const MIN = 60000;
@@ -74,6 +74,18 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
     return { visit: copy(v), minutes: v.minutes, extra: v.extra };
   }
 
+  // Khách về (dùng chung cho nút Khách về cũ và Thanh toán)
+  function checkOutVisit(v, outAt = null) {
+    if (v.status !== 'ngoi') err('LOI', 'Lượt này không đang ngồi');
+    const out = outAt == null ? Math.max(clock.now(), v.inAt) : Number(outAt);
+    if (outAt != null && !(out > v.inAt)) err('LOI', 'Giờ ra phải sau giờ vào');
+    if (out > clock.now() + MIN) err('LOI', 'Giờ ra chưa tới');
+    v.status = 've'; v.outAt = out;
+    const res = finish(v);
+    log(v, 'Khách về', `Ngồi ${fmtDur(res.minutes)} → thêm ${res.extra} giờ`);
+    res.visit = copy(v); return res;
+  }
+
   const api = {
     volatile,
     kind: 'local',
@@ -119,6 +131,7 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
       return copy({
         settings: st.settings, boxes: [...st.boxes].sort((a, b) => a.sort - b.sort), customers: st.customers, bookings: st.bookings,
         visits: st.visits.filter((v) => v.date === date || v.status === 'ngoi'),
+        orderStats: orderStatsOf(st),
       });
     },
     async visitsRange(from, to) { return copy(st.visits.filter((v) => v.date >= from && v.date <= to)); },
@@ -191,14 +204,8 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
     async checkOut(visitId, outAt = null) {
       needMe();
       const v = visit(visitId);
-      if (v.status !== 'ngoi') err('LOI', 'Lượt này không đang ngồi');
-      const out = outAt == null ? clock.now() : Number(outAt);
-      if (!(out > v.inAt)) err('LOI', 'Giờ ra phải sau giờ vào');
-      if (out > clock.now() + MIN) err('LOI', 'Giờ ra chưa tới');
-      v.status = 've'; v.outAt = out;
-      const res = finish(v);
-      log(v, 'Khách về', `Ngồi ${fmtDur(res.minutes)} → thêm ${res.extra} giờ`);
-      res.visit = copy(v); save(); return res;
+      const res = checkOutVisit(v, outAt);
+      save(); return res;
     },
 
     async noShow(visitId) {
@@ -249,7 +256,7 @@ export function createLocalStore({ storage = globalThis.localStorage, seed = tru
         });
     },
   };
-  addSales(api, { st: () => st, save, id, needMe, err, copy, log, clock, visit, live, ctx });
+  addSales(api, { st: () => st, save, id, needMe, err, copy, log, clock, visit, live, ctx, checkOutVisit });
   api.volatile = volatile;
   api.statusLabel = STATUS_LABEL;
   return api;
