@@ -296,6 +296,15 @@ export function addSales(api, h) {
         .map((m) => ({ at: m.at, kind: m.kind, name: (st.stockItems.find((k) => k.id === m.stockItemId) || { name: '?' }).name, qty: m.qty, by: m.by, note: m.note })));
     },
 
+    async ordersRange(from, to) {
+      needRole('chu', 'ql');
+      const inR = (ms) => { if (!ms) return false; const d = fromMs(ms).date; return d >= from && d <= to; };
+      return copy(S().orders.filter((o) => (o.status === 'da_thu' || o.status === 'huy') && (inR(o.paidAt) || (o.status === 'huy' && inR(o.voidedAt)))));
+    },
+    async approvalsRange(from, to) {
+      needRole('chu', 'ql');
+      return copy(S().approvals.filter((a) => { const d = fromMs(a.at).date; return d >= from && d <= to; }));
+    },
     async listStock() { needMe(); return copy(S().stockItems.filter((k) => k.active !== false).map(({ id: i, name, unit, menuItemId, active }) => ({ id: i, name, unit, menuItemId, active }))); },
     async saveStockItem(it) {
       needRole('chu', 'ql');

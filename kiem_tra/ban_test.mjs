@@ -245,4 +245,14 @@ await t('kho: QL thêm hàng; thiếu tên → lỗi', async () => {
 });
 await t('kho: kiểm kê không có dòng nào → lỗi', async () => { const s = await fresh(); eq(await msg(() => s.saveCount({ items: [] })), 'Nhập số đếm ít nhất 1 hàng'); });
 
+// ===== Bước 6: lấy phiếu / duyệt theo ngày =====
+await t('ordersRange: QL/Chủ xem; phiếu huỷ hôm sau vẫn lấy theo ngày huỷ', async () => {
+  const s = await fresh(); const o = await phieu(s, await vao(s)); await goi(s, o.id, ['m_coca']);
+  await s.pay([o.id], { transfer: 20000, cashGiven: 0 });
+  const nv = await code(() => s.ordersRange(D, D));
+  clock.set(atMs('2026-11-20', 600)); await as(s, 'u_ql'); await s.voidOrder(o.id, { reason: 'nhầm' });
+  eq([nv, (await s.ordersRange(D, D)).length, (await s.ordersRange('2026-11-20', '2026-11-20')).length, (await s.ordersRange('2026-11-21', '2026-11-21')).length], ['QUYEN', 1, 1, 0]);
+  eq((await s.approvalsRange('2026-11-20', '2026-11-20')).map((a) => [a.kind, a.approvedBy, a.reason]), [['huy_hoa_don', 'Quản lý (thử)', 'nhầm']]);
+});
+
 done();

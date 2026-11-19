@@ -1,6 +1,6 @@
 import { t, eq, done } from './t.mjs';
 import { atMs } from '../docs/js/time.js';
-import { dailyCounts, peakGrid, extraList } from '../docs/js/report.js';
+import { dailyCounts, peakGrid, extraList, revenueDaily, itemSales, extraMoney, discountSummary } from '../docs/js/report.js';
 
 const S = { open: '08:00', close: '23:00', holdMin: 180, freeMin: 180, graceMin: 10, lateMin: 15, perBox: 3 };
 const ve = (id, date, inMin, mins, bookingId = null) => ({ id, bookingId, boxId: 'b1', status: 've', date, startMin: null, durMin: 180, inAt: atMs(date, inMin), outAt: atMs(date, inMin + mins), minutes: mins, people: 1 });
@@ -25,4 +25,24 @@ await t('báo cáo dùng giờ thêm đã lưu lúc khách về', () => {
   const v = { ...ve('z', '2026-11-16', 600, 241), extra: 1 };
   const r = extraList([v], '2026-11-16', '2026-11-16', S); eq([r.items.length, r.total], [1, 1]);
 });
+// ===== Báo cáo tiền =====
+const O = (id, paidDay, o = {}) => ({ id, status: 'da_thu', paidAt: atMs(paidDay, 600), voidedAt: null, paidWith: null,
+  payments: [{ method: 'tien_mat', amount: 95000 }], extraHours: 2,
+  priced: { goods: 55000, extraAmount: 40000, promo: null, manualAmount: 0, total: 95000 },
+  lines: [{ kind: 'mon', name: 'Trà đào', price: 35000, qty: 1 }, { kind: 'mon', name: 'Coca', price: 20000, qty: 1 }], ...o });
+const ORDERS = [
+  O('o1', '2026-11-19', { status: 'huy', voidedAt: atMs('2026-11-20', 600) }),
+  O('o2', '2026-11-20', { payments: [{ method: 'tien_mat', amount: 95000 }, { method: 'chuyen_khoan', amount: 100000 }],
+    priced: { goods: 155000, extraAmount: 40000, promo: { source: 'voucher', amount: 5000 }, manualAmount: 10000, total: 195000 },
+    lines: [{ kind: 'mon', name: 'Trà đào', price: 35000, qty: 1 }, { kind: 'combo', name: 'Combo 3 người', price: 150000, qty: 1 }] }),
+  O('o3', '2026-11-20', { paidWith: 'o2', payments: [], priced: { goods: 0, extraAmount: 20000, promo: { source: 'tu_dong', amount: 3000 }, manualAmount: 0, total: 20000 }, extraHours: 1, lines: [] }),
+];
+await t('doanh thu: huỷ hôm sau → hôm trước giữ, hôm huỷ ghi âm', () => {
+  const r = revenueDaily(ORDERS, '2026-11-19', '2026-11-20');
+  eq(r.map((d) => [d.date, d.cash, d.transfer, d.voids, d.total, d.count]), [['2026-11-19', 95000, 0, 0, 95000, 1], ['2026-11-20', 95000, 100000, -95000, 100000, 1]]);
+});
+await t('bán theo món: phiếu huỷ không tính, combo một dòng', () => eq(itemSales(ORDERS, '2026-11-19', '2026-11-20'), [{ name: 'Combo 3 người', qty: 1, amount: 150000 }, { name: 'Trà đào', qty: 1, amount: 35000 }]));
+await t('tiền ngồi thêm (bỏ phiếu huỷ)', () => eq(extraMoney(ORDERS, '2026-11-19', '2026-11-20'), { hours: 3, amount: 60000 }));
+await t('tổng giảm giá theo loại', () => eq(discountSummary(ORDERS.filter((o) => o.status === 'da_thu')), { promo: 3000, voucher: 5000, manual: 10000 }));
+
 done();

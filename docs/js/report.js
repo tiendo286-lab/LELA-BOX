@@ -1,5 +1,5 @@
 // Số liệu báo cáo (thuần).
-import { atMs, addDays, slots } from './time.js';
+import { atMs, addDays, slots, fromMs } from './time.js';
 import { extraHours } from './rules.js';
 
 const MIN = 60000;
@@ -51,4 +51,50 @@ export function extraList(visits, from, to, s) {
     .filter((x) => x.extra > 0)
     .sort((a, b) => a.visit.inAt - b.visit.inAt);
   return { items, total: items.reduce((a, x) => a + x.extra, 0) };
+}
+
+// ===== Báo cáo tiền =====
+// Phiếu thu chung: tiền trả nằm ở phiếu đầu nhóm (paidWith = null). Huỷ: cộng vào ngày thu, trừ ở ngày huỷ.
+const dayOf = (ms) => (ms ? fromMs(ms).date : null);
+const paidSum = (o, m) => (o.payments || []).filter((p) => p.method === m).reduce((a, p) => a + p.amount, 0);
+
+export function revenueDaily(orders, from, to) {
+  return eachDate(from, to).map((date) => {
+    const roots = orders.filter((o) => !o.paidWith && (o.status === 'da_thu' || o.status === 'huy'));
+    const paid = roots.filter((o) => dayOf(o.paidAt) === date);
+    const voided = roots.filter((o) => o.status === 'huy' && dayOf(o.voidedAt) === date);
+    const cash = paid.reduce((a, o) => a + paidSum(o, 'tien_mat'), 0);
+    const transfer = paid.reduce((a, o) => a + paidSum(o, 'chuyen_khoan'), 0);
+    const voids = -voided.reduce((a, o) => a + paidSum(o, 'tien_mat') + paidSum(o, 'chuyen_khoan'), 0);
+    return { date, cash, transfer, voids, total: cash + transfer + voids, count: paid.length };
+  });
+}
+
+const inRange = (o, from, to) => o.status === 'da_thu' && dayOf(o.paidAt) >= from && dayOf(o.paidAt) <= to;
+
+export function itemSales(orders, from, to) {
+  const m = new Map();
+  for (const o of orders.filter((x) => inRange(x, from, to))) {
+    for (const l of o.lines || []) {
+      if (l.voided) continue;
+      const cur = m.get(l.name) || { name: l.name, qty: 0, amount: 0 };
+      cur.qty += l.qty; cur.amount += l.price * l.qty; m.set(l.name, cur);
+    }
+  }
+  return [...m.values()].sort((a, b) => b.amount - a.amount || (a.name < b.name ? -1 : 1));
+}
+
+export function extraMoney(orders, from, to) {
+  const os = orders.filter((x) => inRange(x, from, to));
+  return { hours: os.reduce((a, o) => a + (o.extraHours || 0), 0), amount: os.reduce((a, o) => a + ((o.priced && o.priced.extraAmount) || 0), 0) };
+}
+
+export function discountSummary(orders) {
+  const out = { promo: 0, voucher: 0, manual: 0 };
+  for (const o of orders) {
+    const p = o.priced || {};
+    if (p.promo) out[p.promo.source === 'voucher' ? 'voucher' : 'promo'] += p.promo.amount;
+    out.manual += p.manualAmount || 0;
+  }
+  return out;
 }

@@ -96,6 +96,8 @@ export function createSupabaseStore({ supabaseUrl, anonKey }) {
     stockOverview: () => rpc('app_stock_overview'),
     saveCount: (p) => rpc('app_stock_count', { p }),
     countsList: (from, to) => rpc('app_stock_counts', { p_from: from, p_to: to }),
+    ordersRange: (from, to) => rpc('app_orders_range', { p_from: from, p_to: to }),
+    approvalsRange: (from, to) => rpc('app_approvals_range', { p_from: from, p_to: to }),
     findCustomers: (q) => (String(q || '').trim().length < 2 ? Promise.resolve([]) : rpc('app_customers_find', { p_q: q })),
   };
 }
