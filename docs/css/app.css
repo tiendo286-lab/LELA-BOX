@@ -126,3 +126,18 @@ details.log ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .list-view .li-box { flex: none; width: 58px; font-size: 13px; font-weight: 600; padding-top: 8px; }
 .list-view .vis { flex: 1; margin: 0; font-size: 14px; min-height: 40px; }
 @media (min-width: 700px) { .grid-view { display: block; } .list-view { display: none; } }
+
+/* Khách + Báo cáo */
+#q-khach { margin-bottom: 10px; }
+.kcard { padding: 4px 6px; }
+.k-head { display: block; width: 100%; text-align: left; padding: 8px; }
+.k-body { padding: 0 8px 8px; }
+.kvis-list { list-style: none; margin: 8px 0 0; padding: 0; font-size: 14px; }
+.kvis { padding: 6px 0; border-top: 1px solid var(--line); }
+.kvis button { padding: 0; min-height: 0; text-align: left; color: var(--book-ink); }
+.ranges button.on { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.scroll-x { overflow-x: auto; max-width: 100%; }
+.tbl { border-collapse: collapse; font-size: 14px; width: 100%; }
+.tbl th, .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.tbl td { font-variant-numeric: tabular-nums; }
+.t-peak th, .t-peak td { padding: 3px 2px; min-width: 22px; text-align: center; font-size: 11px; border: 1px solid #f3ece4; }
