@@ -1,3 +1,6 @@
 flow_khung nv
 flow_khung chu
 flow_khung chu phone
+flow_bang nv
+flow_bang nv phone
+flow_bang chu
