@@ -4,7 +4,7 @@ Cập nhật: 19/11/2026 (phiên 2 — thêm tính tiền + kho thay KiotViet).
 
 ## Tình trạng
 
-- **Bản chạy thử trên máy đã có đủ: quản lý box + gọi món / thanh toán + kho + báo cáo tiền.** Dữ liệu nằm trong trình duyệt, chưa có máy chủ thật, chưa đưa lên mạng.
+- **Bản chạy thử trên máy đã có đủ: quản lý box + gọi món / thanh toán + hoá đơn (in lại, huỷ, huỷ & thu lại) + kho + báo cáo tiền.** Dữ liệu nằm trong trình duyệt, chưa có máy chủ thật, chưa đưa lên mạng.
 - Nhánh: `dat-box` (quản lý box) → `tinh-tien` (tính tiền + kho, làm tiếp từ `dat-box`). Kho Git riêng ở `~/Lela Box`, chưa có bản trên GitHub. Chưa gộp vào `main` — chờ anh Tiến duyệt.
 - Anh Tiến chốt (19/11): **web riêng**, không gộp vào web Milano; **thay hẳn KiotViet** ở Lela Box (LLB vẫn chốt ca bên Milano như cũ).
 - Tệp máy chủ `supabase/01_khoi_tao.sql` + `02_tinh_tien_kho.sql` đã viết, **chưa chạy lần nào** (máy không có Postgres). Đã soát cú pháp bằng bộ đọc Postgres (pglast) và soát tên hàm / tham số khớp với web. Lần đầu phải chạy thử kèm `kiem_tra_01.sql`, `kiem_tra_02.sql` (tự hoàn tác) trước khi chạy thật.
@@ -12,7 +12,8 @@ Cập nhật: 19/11/2026 (phiên 2 — thêm tính tiền + kho thay KiotViet).
 ## Đã kiểm
 
 - Hàm thuần: `kiem_tra/chay_jsc.sh` — giờ, đồng hồ, quy tắc, bảng box / nhắc việc, lưu chạy thử, báo cáo, **tiền** (`money_test`), **kho + đọc file menu** (`stock_test`), **mẫu in** (`print_test`), **bán hàng** (`ban_test`), bản máy chủ. Tất cả đạt.
-- Giao diện: `kiem_tra/chay_het.sh` — 23 bài trên Chrome ẩn (Nhân viên / Quản lý / Chủ, máy tính / khung điện thoại 390px), gồm `flow_ban_hang`, `flow_cai_dat_ban`, `flow_kho`. Tất cả đạt, không tràn ngang, không có chữ lạ.
+- Duyệt cuối (người duyệt mới, 19/11): sửa 1 lỗi nghiêm trọng (chưa có chỗ in lại / huỷ hoá đơn) + 4 lỗi quan trọng (huỷ xong không thu lại được; voucher khi trả chung; bấm nhanh mất số lượng; in lại sai giá ngồi thêm).
+- Giao diện: `kiem_tra/chay_het.sh` — 25 bài trên Chrome ẩn (Nhân viên / Quản lý / Chủ, máy tính / khung điện thoại 390px), gồm `flow_ban_hang`, `flow_cai_dat_ban`, `flow_kho`, `flow_hoa_don`. (Thỉnh thoảng một bài báo "quá 60 giây" do máy bận — chạy lại bài đó.) Tất cả đạt, không tràn ngang, không có chữ lạ.
 - SQL: `kiem_tra/soat_sql.py supabase/*.sql` (cần pglast) — đạt cú pháp.
 
 ## Quyết định anh Tiến đã chốt
@@ -27,7 +28,22 @@ Cập nhật: 19/11/2026 (phiên 2 — thêm tính tiền + kho thay KiotViet).
   - Kho: nhập số lượng, chỉ hàng bán nguyên tự trừ, kiểm kê ra chênh lệch. Không hoá đơn điện tử. Tích điểm, chốt ca: làm sau. Mất mạng: phát Wi-Fi điện thoại.
   - Chuyển đổi: chạy song song với KiotViet 1 tuần rồi mới bỏ.
 
-## Lỗi nhỏ còn để lại (từ phiên 1, chưa sửa)
+## Lỗi nhỏ còn để lại (chưa sửa)
+
+Phiên 2 (tính tiền + kho):
+- Khung thanh toán ghi tên box cũ sau khi đổi box (hoá đơn in vẫn đúng box mới).
+- Huỷ hoá đơn không trả lại lượt dùng của voucher.
+- Ô kiểm kê gõ sai (vd "1O") bị bỏ qua, không báo.
+- Bỏ chọn hết ngày của khuyến mãi = áp mọi ngày.
+- Huỷ món đã gửi pha chế không in phiếu huỷ cho quầy.
+- Phím Esc trong hộp PIN đóng luôn khung bên dưới.
+- Máy chủ: giá ngồi thêm gửi rỗng → lỗi thô thay vì câu dễ hiểu; xem tiền (quote) có thể hiếm khi kẹt với lệnh thu cùng lúc (Postgres tự gỡ, một bên báo lỗi).
+- Combo-only + voucher: báo "Đã áp mã" nhưng giảm 0đ.
+- Nhập menu KiotViet chưa cho chọn cột bằng tay (chờ file mẫu).
+- Hai quản lý đặt trùng PIN thì duyệt ghi tên người tạo trước.
+- Lệch nhỏ bản thử / máy chủ: 2 hàng kho cùng gắn 1 món; mã voucher không tồn tại trên phiếu; hoà giữa 2 khuyến mãi tự động.
+
+Phiên 1:
 
 - Sửa phiếu nhóm đã có box vào rồi: có thể thêm box vượt quá 3 cho cả phiếu.
 - Bản chạy thử cho khách vào box đang tạm ngừng (máy chủ thì chặn).
@@ -51,6 +67,7 @@ Cập nhật: 19/11/2026 (phiên 2 — thêm tính tiền + kho thay KiotViet).
 2. **Chạy SQL:**
    - Gửi `01_khoi_tao.sql` + `02_tinh_tien_kho.sql` + `kiem_tra_01.sql` (rồi một lần khác `01` + `02` + `kiem_tra_02.sql`) — xem dòng `REPORT>>`, đối chiếu từng mục "mong:". Có lỗi thì sửa bằng tệp mới `03_...sql`, không sửa 01/02 nếu đã chạy thật.
    - Đúng hết mới gửi riêng `01_khoi_tao.sql`, rồi `02_tinh_tien_kho.sql` để chạy thật.
+   - **Lưu ý:** nếu sau này chạy lại `01` thì phải chạy lại `02` ngay sau (01 ghi đè vài hàm của 02 → mất cài đặt bán hàng, vai trò Quản lý bị từ chối).
 3. **Tạo Chủ đầu tiên:** Authentication › Users › *Add user* (email + mật khẩu của Chủ), rồi chạy:
    `insert into staff (email, name, role) values ('<email chủ>', 'Chủ', 'chu');`
    Nhân viên / Quản lý khác: tạo tài khoản ở Authentication, rồi Chủ thêm email trong web (Cài đặt › Nhân viên). Chủ và Quản lý vào Cài đặt › **PIN của tôi** đặt PIN.
